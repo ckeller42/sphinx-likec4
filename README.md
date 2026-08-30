@@ -12,6 +12,17 @@ The extension runs the **pinned** LikeC4 CLI for you (node ≥ 20 required at do
 time), caches the build on a content hash, validates every embedded view id at build time
 (`-W` friendly), and serves the viewer with hash routing so it works from any subpath.
 
+## Agent skill
+
+An [Agent Skill](https://agentskills.io) documenting the directive surface ships in `skills/`:
+
+```bash
+npx skills add ckeller42/sphinx-likec4      # installs into your agent's skills dir
+```
+
+An LLM-oriented summary of the whole project lives at
+[`/llms.txt`](https://ckeller42.github.io/sphinx-likec4/llms.txt).
+
 ## Quickstart
 
 ```bash

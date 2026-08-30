@@ -1,0 +1,24 @@
+# sphinx-likec4
+
+> Sphinx extension that embeds interactive LikeC4 architecture views — including dynamic-view
+> sequence diagrams — in Sphinx documentation. It runs the pinned LikeC4 CLI (node >= 20) at
+> doc-build time, caches on a content hash, validates every embedded view id (fails `-W` builds
+> on unknown ids), and serves the viewer with hash routing at `_likec4/` so links work from any
+> subpath. MIT licensed.
+
+Key facts: directives `likec4-view` (options: `height`, `title`, `mode: diagram|sequence`) and
+`likec4-model` (options: `height`, `link-only`); conf.py values `likec4_source_dir` (required),
+`likec4_version` (pinned default), `likec4_missing` (`error`|`warn`), `likec4_build_args`.
+Non-HTML builders render plain text. Install: `pip install sphinx-likec4`.
+
+## Docs
+
+- [Quickstart](https://ckeller42.github.io/sphinx-likec4/): install + minimal conf.py + first embed
+- [Directives](https://ckeller42.github.io/sphinx-likec4/directives.html): likec4-view / likec4-model, all options, MyST forms
+- [Configuration](https://ckeller42.github.io/sphinx-likec4/configuration.html): conf.py values, node requirement, caching
+- [Example](https://ckeller42.github.io/sphinx-likec4/example.html): LikeC4's cloud-system embedded, incl. a sequence view
+
+## Source
+
+- [Repository](https://github.com/ckeller42/sphinx-likec4): source, tests, agent skill (`skills/`)
+- [LikeC4](https://likec4.dev): the architecture-as-code language this renders
