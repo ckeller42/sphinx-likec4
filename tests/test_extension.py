@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from sphinx.application import Sphinx
 from sphinx.errors import SphinxError
+from sphinx.util.docutils import docutils_namespace
 
 from sphinx_likec4 import _runner
 
@@ -95,8 +96,13 @@ def test_incremental_build_detects_stale_view_after_rename(tmp_path, monkeypatch
         return dist, {"index", "seqA"}
 
     monkeypatch.setattr(_runner, "ensure_build", fake_v1)
-    app = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
-    app.build()
+    # each Sphinx() app registers docutils nodes into a process-global registry;
+    # nest each app's lifetime in its own docutils_namespace() so this test's two
+    # in-process "fresh Sphinx object" builds don't trip a spurious re-registration
+    # warning against each other (Sphinx <8; see tests/conftest.py).
+    with docutils_namespace():
+        app = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
+        app.build()
 
     # rename the view in the model source — the rst files themselves are untouched
     (src / "model" / "a.c4").write_text(
@@ -112,9 +118,10 @@ def test_incremental_build_detects_stale_view_after_rename(tmp_path, monkeypatch
         return dist, {"renamed", "seqA"}
 
     monkeypatch.setattr(_runner, "ensure_build", fake_v2)
-    app2 = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
-    with pytest.raises(SphinxError):      # "index" no longer exists post-rename
-        app2.build()
+    with docutils_namespace():
+        app2 = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
+        with pytest.raises(SphinxError):  # "index" no longer exists post-rename
+            app2.build()
 
 
 def test_title_with_quote_is_html_escaped(tmp_path, fake_build):
