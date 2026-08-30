@@ -82,6 +82,65 @@ def test_non_html_builder_renders_plain_text(tmp_path):
     assert "LikeC4 view" in txt and "iframe" not in txt
 
 
+def test_incremental_build_detects_stale_view_after_rename(tmp_path, monkeypatch):
+    src = tmp_path / "srcinc"
+    shutil.copytree(ROOT, src)
+    out = tmp_path / "out"
+    dt = tmp_path / "dt"
+
+    def fake_v1(source_dir, cache_dir, version, build_args):
+        dist = cache_dir / "dist"
+        dist.mkdir(parents=True, exist_ok=True)
+        (dist / "index.html").write_text("<html>fake viewer</html>")
+        return dist, {"index", "seqA"}
+
+    monkeypatch.setattr(_runner, "ensure_build", fake_v1)
+    app = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
+    app.build()
+
+    # rename the view in the model source — the rst files themselves are untouched
+    (src / "model" / "a.c4").write_text(
+        "specification { element system }\n"
+        "model { a = system 'A' }\n"
+        "views { view renamed { include * } }\n"
+    )
+
+    def fake_v2(source_dir, cache_dir, version, build_args):
+        dist = cache_dir / "dist"
+        dist.mkdir(parents=True, exist_ok=True)
+        (dist / "index.html").write_text("<html>fake viewer</html>")
+        return dist, {"renamed", "seqA"}
+
+    monkeypatch.setattr(_runner, "ensure_build", fake_v2)
+    app2 = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
+    with pytest.raises(SphinxError):      # "index" no longer exists post-rename
+        app2.build()
+
+
+def test_title_with_quote_is_html_escaped(tmp_path, fake_build):
+    src = tmp_path / "srctitle"
+    shutil.copytree(ROOT, src)
+    (src / "index.rst").write_text(
+        'T\n=\n\n.. likec4-view:: index\n   :title: a "quoted" title\n')
+    (src / "sub" / "page.rst").unlink()
+    out = _build(tmp_path, srcdir=src)
+    html_text = (out / "index.html").read_text()
+    assert 'title="a &quot;quoted&quot; title"' in html_text
+    assert 'title="a "quoted" title"' not in html_text
+
+
+def test_suppress_warnings_silences_missing_node_under_dash_w(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise _runner.LikeC4Missing("no npx")
+    monkeypatch.setattr(_runner, "ensure_build", boom)
+    out = tmp_path / "out"
+    app = Sphinx(str(ROOT), str(ROOT), str(out), str(tmp_path / "dt"), "html",
+                 confoverrides={"likec4_missing": "warn", "suppress_warnings": ["likec4"]},
+                 warningiserror=True)
+    app.build()             # would raise SphinxWarning under -W if not suppressed
+    assert "likec4-placeholder" in (out / "index.html").read_text()
+
+
 def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
     import shutil as _sh
     src = tmp_path / "srcmode"

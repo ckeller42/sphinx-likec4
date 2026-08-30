@@ -32,7 +32,7 @@ subpath-independent — without it the SPA router 404s under a subpath), **pinne
 
 - `.. likec4-view:: <view-id>` — embeds `_likec4/#/view/<id>/` as an iframe.
   Options: `:height:` (default `460px`), `:title:` (iframe title/a11y).
-  Non-HTML builders emit a plain link to the view.
+  Non-HTML builders emit plain text.
   **Sequence diagrams are first-class:** LikeC4 `dynamic view` ids live in the same view-id
   space, so `likec4-view` embeds them identically — validated against the same
   `export json` view list. A dedicated test + a docs embed prove it.

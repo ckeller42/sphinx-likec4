@@ -32,7 +32,9 @@ def _run(npx: str, args: list[str], cwd: Path) -> None:
     res = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False)  # checked manually below
     if res.returncode != 0:
         raise RuntimeError(
-            f"likec4 failed: {' '.join(cmd)}\n{res.stderr.decode(errors='replace')}"
+            f"likec4 failed: {' '.join(cmd)}\n"
+            f"stdout:\n{res.stdout.decode(errors='replace')}\n"
+            f"stderr:\n{res.stderr.decode(errors='replace')}"
         )
 
 

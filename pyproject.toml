@@ -20,7 +20,7 @@ classifiers = [
 Homepage = "https://github.com/ckeller42/sphinx-likec4"
 
 [project.optional-dependencies]
-test = ["pytest>=8", "defusedxml", "ruff"]
+test = ["pytest>=8", "ruff"]
 docs = ["furo", "myst-parser>=2"]
 
 [tool.hatch.build.targets.wheel]

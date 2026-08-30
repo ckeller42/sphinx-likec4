@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 def _builder_inited(app):
     from . import _runner
-    if app.builder.format != "html":
+    if app.config.likec4_missing not in ("error", "warn"):
+        raise ConfigError(
+            f"sphinx-likec4: likec4_missing must be 'error' or 'warn', "
+            f"got {app.config.likec4_missing!r}"
+        )
+    if app.builder.format != "html" or app.builder.name.startswith("epub"):
         app.env.likec4_mode = "non-html"  # directives emit plain text; no build needed
         app.env.likec4_views = set()
         app.env.likec4_dist = None
@@ -25,6 +30,11 @@ def _builder_inited(app):
     source_dir = Path(app.confdir) / src
     if not source_dir.is_dir():
         raise ConfigError(f"sphinx-likec4: likec4_source_dir {source_dir} does not exist")
+    # directives note_dependency() on these so a rename/edit invalidates cached
+    # doctrees on incremental builds (otherwise a stale doctree hides an id change)
+    app.env.likec4_sources = [
+        str(p) for p in sorted(source_dir.rglob("*")) if p.suffix in (".c4", ".likec4")
+    ]
     cache_dir = Path(app.doctreedir) / "likec4"
     try:
         dist, views = _runner.ensure_build(
@@ -49,7 +59,9 @@ def _build_finished(app, exc):
         return
     dist = getattr(app.env, "likec4_dist", None)
     if dist:
-        shutil.copytree(dist, Path(app.outdir) / "_likec4", dirs_exist_ok=True)
+        target = Path(app.outdir) / "_likec4"
+        shutil.rmtree(target, ignore_errors=True)  # drop orphaned assets from a prior build
+        shutil.copytree(dist, target, dirs_exist_ok=True)
 
 
 def setup(app):
