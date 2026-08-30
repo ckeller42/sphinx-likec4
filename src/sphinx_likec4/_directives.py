@@ -1,0 +1,62 @@
+"""The likec4-view / likec4-model directives."""
+from __future__ import annotations
+
+from docutils import nodes
+from docutils.parsers.rst import Directive, directives
+from sphinx.errors import ExtensionError
+
+
+def _rel(docname: str) -> str:
+    return "../" * docname.count("/")
+
+
+def _placeholder(text: str) -> nodes.raw:
+    return nodes.raw("", f'<p class="likec4-placeholder"><em>{text}</em></p>', format="html")
+
+
+class LikeC4View(Directive):
+    required_arguments = 1
+    option_spec = {"height": directives.unchanged, "title": directives.unchanged}
+
+    def run(self):
+        env = self.state.document.settings.env
+        view = self.arguments[0]
+        views = getattr(env, "likec4_views", None)
+        if views is None:                                   # warn mode, build unavailable
+            return [_placeholder(f"LikeC4 view “{view}” (viewer not built — node/npx unavailable)")]
+        if view not in views:
+            # A docutils DirectiveError (self.error()) is swallowed into an in-page
+            # error node and does not fail the build even under warningiserror; an
+            # unknown view id is a hard authoring error, so raise for real.
+            raise ExtensionError(
+                f"likec4-view: unknown view id {view!r} (known: {', '.join(sorted(views))})"
+            )
+        height = self.options.get("height", "460px")
+        title = self.options.get("title", f"LikeC4 view {view}")
+        src = _rel(env.docname) + f"_likec4/#/view/{view}/"
+        html = (
+            f'<iframe class="likec4-view" src="{src}" loading="lazy" title="{title}" '
+            f'style="width:100%;height:{height};border:1px solid rgba(120,120,120,.3);'
+            f'border-radius:8px;"></iframe>'
+        )
+        return [nodes.raw("", html, format="html")]
+
+
+class LikeC4Model(Directive):
+    option_spec = {"link-only": directives.flag, "height": directives.unchanged}
+
+    def run(self):
+        env = self.state.document.settings.env
+        if getattr(env, "likec4_views", None) is None:
+            return [_placeholder("LikeC4 model (viewer not built — node/npx unavailable)")]
+        src = _rel(env.docname) + "_likec4/"
+        if "link-only" in self.options:
+            html = f'<p><a class="likec4-model-link" href="{src}">Open the interactive model</a></p>'
+        else:
+            height = self.options.get("height", "600px")
+            html = (
+                f'<iframe class="likec4-model" src="{src}" loading="lazy" '
+                f'title="LikeC4 model" style="width:100%;height:{height};'
+                f'border:1px solid rgba(120,120,120,.3);border-radius:8px;"></iframe>'
+            )
+        return [nodes.raw("", html, format="html")]

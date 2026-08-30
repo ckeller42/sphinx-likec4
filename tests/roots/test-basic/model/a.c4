@@ -1,0 +1,3 @@
+specification { element system }
+model { a = system 'A' }
+views { view index { include * } }
