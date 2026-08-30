@@ -39,15 +39,11 @@ def _run(npx: str, args: list[str], cwd: Path) -> None:
 def _view_ids(data: object) -> set[str]:
     """Extract view ids from `likec4 export json` output (dict- or list-shaped)."""
     ids: set[str] = set()
-    if isinstance(data, dict):
-        views = data.get("views", data)
+    if isinstance(data, dict):                 # single project: {"views": {<id>: ...}}
+        views = data.get("views")
         if isinstance(views, dict):
             ids |= set(views.keys())
-        elif isinstance(views, list):
-            ids |= {v.get("id") for v in views if isinstance(v, dict) and v.get("id")}
-        for proj in data.get("projects", []) if isinstance(data.get("projects"), list) else []:
-            ids |= _view_ids(proj)
-    elif isinstance(data, list):
+    elif isinstance(data, list):               # multi-project: a list of such dicts
         for item in data:
             ids |= _view_ids(item)
     return ids
@@ -69,6 +65,7 @@ def ensure_build(source_dir: Path, cache_dir: Path, version: str,
     if stamp.exists() and stamp.read_text() == digest and dist.exists() and views_file.exists():
         return dist, set(json.loads(views_file.read_text()))
 
+    shutil.rmtree(dist, ignore_errors=True)    # stale hashed assets must not accumulate
     cli = f"likec4@{version}"
     _run(npx, [cli, "build", "--use-hash-history", "--base", "./",
                "-o", str(dist), *build_args, str(source_dir)], cwd=source_dir)
