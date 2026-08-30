@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sphinx-likec4"
+version = "0.1.0"
+description = "Embed interactive LikeC4 architecture views (including dynamic-view sequences) in Sphinx documentation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "ckeller" }]
+dependencies = ["sphinx>=7"]
+classifiers = [
+  "Framework :: Sphinx :: Extension",
+  "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/ckeller42/sphinx-likec4"
+
+[project.optional-dependencies]
+test = ["pytest>=8", "defusedxml"]
+docs = ["furo", "myst-parser>=2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sphinx_likec4"]
