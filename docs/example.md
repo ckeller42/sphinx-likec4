@@ -13,6 +13,7 @@ LikeC4's official [`cloud-system` example](https://github.com/likec4/likec4/tree
 
 ```{likec4-view} cloud-to-amazon
 :height: 420px
+:mode: sequence
 ```
 
 Source: [`model.c4`](https://github.com/likec4/likec4/blob/main/examples/cloud-system/model.c4)

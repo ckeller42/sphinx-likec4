@@ -19,7 +19,15 @@ MyST form:
 ```
 ````
 
-Options: `height` (default `460px`), `title` (iframe title, for accessibility).
+Options: `height` (default `460px`), `title` (iframe title, for accessibility), and
+`mode` — `diagram` (viewer default) or `sequence`, which opens a **dynamic view directly in
+its sequence rendering** (appends the viewer's `?dynamic=` parameter):
+
+```rst
+.. likec4-view:: cloud-to-amazon
+   :mode: sequence
+```
+
 An unknown view id **fails the build** (works with `-W`).
 
 ## likec4-model

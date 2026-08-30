@@ -79,3 +79,14 @@ def test_non_html_builder_renders_plain_text(tmp_path):
     app.build()
     txt = (out / "index.txt").read_text()
     assert "LikeC4 view" in txt and "iframe" not in txt
+
+
+def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
+    import shutil as _sh
+    src = tmp_path / "srcmode"
+    _sh.copytree(ROOT, src)
+    (src / "index.rst").write_text(
+        "M\n=\n\n.. likec4-view:: seqA\n   :mode: sequence\n")
+    (src / "sub" / "page.rst").unlink()
+    out = _build(tmp_path, srcdir=src)
+    assert 'src="_likec4/#/view/seqA/?dynamic=sequence"' in (out / "index.html").read_text()

@@ -14,9 +14,13 @@ def _placeholder(text: str) -> nodes.raw:
     return nodes.raw("", f'<p class="likec4-placeholder"><em>{text}</em></p>', format="html")
 
 
+def _mode(argument):
+    return directives.choice(argument, ("diagram", "sequence"))
+
+
 class LikeC4View(Directive):
     required_arguments = 1
-    option_spec = {"height": directives.unchanged, "title": directives.unchanged}
+    option_spec = {"height": directives.unchanged, "title": directives.unchanged, "mode": _mode}
 
     def run(self):
         env = self.state.document.settings.env
@@ -39,6 +43,9 @@ class LikeC4View(Directive):
         height = self.options.get("height", "460px")
         title = self.options.get("title", f"LikeC4 view {view}")
         src = _rel(env.docname) + f"_likec4/#/view/{view}/"
+        mode = self.options.get("mode")
+        if mode:                       # the viewer's ?dynamic= search param lives inside the hash
+            src += f"?dynamic={mode}"
         html = (
             f'<iframe class="likec4-view" src="{src}" loading="lazy" title="{title}" '
             f'style="width:100%;height:{height};border:1px solid rgba(120,120,120,.3);'
