@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 def _builder_inited(app):
     from . import _runner
     if app.builder.format != "html":
-        app.env.likec4_views = set()      # directives degrade to links elsewhere; keep simple
+        app.env.likec4_mode = "non-html"  # directives emit plain text; no build needed
+        app.env.likec4_views = set()
         app.env.likec4_dist = None
         return
     src = app.config.likec4_source_dir
@@ -33,10 +34,12 @@ def _builder_inited(app):
         if app.config.likec4_missing == "warn":
             logger.warning("sphinx-likec4: %s — views render as placeholders", e,
                            type="likec4", subtype="missing")
+            app.env.likec4_mode = "warn"
             app.env.likec4_views = None
             app.env.likec4_dist = None
             return
         raise ConfigError(f"sphinx-likec4: {e} (set likec4_missing='warn' to build without it)")
+    app.env.likec4_mode = "html"
     app.env.likec4_views = views
     app.env.likec4_dist = str(dist)
 

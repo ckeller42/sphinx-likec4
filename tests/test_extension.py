@@ -70,3 +70,12 @@ def test_missing_node_error_fails_build(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner, "ensure_build", boom)
     with pytest.raises(Exception):
         _build(tmp_path)
+
+
+def test_non_html_builder_renders_plain_text(tmp_path):
+    out = tmp_path / "out"
+    app = Sphinx(str(ROOT), str(ROOT), str(out), str(tmp_path / "dt"), "text",
+                 warningiserror=True)
+    app.build()
+    txt = (out / "index.txt").read_text()
+    assert "LikeC4 view" in txt and "iframe" not in txt

@@ -21,9 +21,14 @@ class LikeC4View(Directive):
     def run(self):
         env = self.state.document.settings.env
         view = self.arguments[0]
-        views = getattr(env, "likec4_views", None)
-        if views is None:                                   # warn mode, build unavailable
+        mode = getattr(env, "likec4_mode", "html")
+        if mode == "non-html":
+            para = nodes.paragraph()
+            para += nodes.Text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")
+            return [para]
+        if mode == "warn":                                  # build unavailable
             return [_placeholder(f"LikeC4 view “{view}” (viewer not built — node/npx unavailable)")]
+        views = env.likec4_views
         if view not in views:
             # A docutils DirectiveError (self.error()) is swallowed into an in-page
             # error node and does not fail the build even under warningiserror; an
@@ -47,7 +52,12 @@ class LikeC4Model(Directive):
 
     def run(self):
         env = self.state.document.settings.env
-        if getattr(env, "likec4_views", None) is None:
+        mode = getattr(env, "likec4_mode", "html")
+        if mode == "non-html":
+            para = nodes.paragraph()
+            para += nodes.Text("LikeC4 model (interactive — see the HTML docs)")
+            return [para]
+        if mode == "warn":
             return [_placeholder("LikeC4 model (viewer not built — node/npx unavailable)")]
         src = _rel(env.docname) + "_likec4/"
         if "link-only" in self.options:
