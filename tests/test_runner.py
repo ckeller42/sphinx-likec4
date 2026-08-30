@@ -47,7 +47,7 @@ def test_ensure_build_runs_cli_once_then_caches(tmp_path, monkeypatch):
     assert views == {"index", "seqA"}
     n = len(calls)
 
-    dist2, views2 = _runner.ensure_build(src, cache, "1.59.2", [])
+    _dist2, views2 = _runner.ensure_build(src, cache, "1.59.2", [])
     assert len(calls) == n            # cache hit: no new CLI calls
     assert views2 == views
 

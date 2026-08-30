@@ -29,10 +29,10 @@ def source_hash(source_dir: Path, version: str, build_args: list[str]) -> str:
 
 def _run(npx: str, args: list[str], cwd: Path) -> None:
     cmd = [npx, "-y", *args]
-    res = subprocess.run(cmd, cwd=cwd, capture_output=True)
+    res = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False)  # checked manually below
     if res.returncode != 0:
         raise RuntimeError(
-            "likec4 failed: %s\n%s" % (" ".join(cmd), res.stderr.decode(errors="replace"))
+            f"likec4 failed: {' '.join(cmd)}\n{res.stderr.decode(errors='replace')}"
         )
 
 

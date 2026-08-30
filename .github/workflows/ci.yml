@@ -18,6 +18,9 @@ jobs:
         with: { python-version: "${{ matrix.python }}" }
       - run: pip install -e .[test]
       - run: python -m pytest tests/ -q
+      - name: Lint
+        if: matrix.python == '3.13'
+        run: python -m ruff check .
   docs:
     runs-on: ubuntu-latest
     permissions: { contents: read, pages: write, id-token: write }

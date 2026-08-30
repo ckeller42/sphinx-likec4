@@ -1,0 +1,9 @@
+# Weekly bumps for the two ecosystems every repo here has.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly }

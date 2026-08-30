@@ -1,6 +1,8 @@
 """The likec4-view / likec4-model directives."""
 from __future__ import annotations
 
+from typing import ClassVar
+
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
 from sphinx.errors import ExtensionError
@@ -20,7 +22,7 @@ def _mode(argument):
 
 class LikeC4View(Directive):
     required_arguments = 1
-    option_spec = {"height": directives.unchanged, "title": directives.unchanged, "mode": _mode}
+    option_spec: ClassVar[dict] = {"height": directives.unchanged, "title": directives.unchanged, "mode": _mode}
 
     def run(self):
         env = self.state.document.settings.env
@@ -55,7 +57,7 @@ class LikeC4View(Directive):
 
 
 class LikeC4Model(Directive):
-    option_spec = {"link-only": directives.flag, "height": directives.unchanged}
+    option_spec: ClassVar[dict] = {"link-only": directives.flag, "height": directives.unchanged}
 
     def run(self):
         env = self.state.document.settings.env

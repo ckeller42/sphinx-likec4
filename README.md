@@ -1,5 +1,10 @@
 # sphinx-likec4
 
+[![CI](https://github.com/ckeller42/sphinx-likec4/actions/workflows/ci.yml/badge.svg)](https://github.com/ckeller42/sphinx-likec4/actions/workflows/ci.yml)
+[![docs](https://img.shields.io/badge/docs-github%20pages-blue)](https://ckeller42.github.io/sphinx-likec4/)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 Embed interactive [LikeC4](https://likec4.dev) architecture views — including
 `dynamic view` **sequence diagrams** — in Sphinx documentation.
 

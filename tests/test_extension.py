@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from sphinx.application import Sphinx
+from sphinx.errors import SphinxError
 
 from sphinx_likec4 import _runner
 
@@ -44,7 +45,7 @@ def test_unknown_view_id_fails_build(tmp_path, fake_build):
     bad = tmp_path / "srcbad"
     shutil.copytree(ROOT, bad)
     (bad / "index.rst").write_text("Bad\n===\n\n.. likec4-view:: nope\n")
-    with pytest.raises(Exception):
+    with pytest.raises(SphinxError):
         _build(tmp_path, srcdir=bad)
 
 
@@ -68,7 +69,7 @@ def test_missing_node_error_fails_build(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise _runner.LikeC4Missing("no npx")
     monkeypatch.setattr(_runner, "ensure_build", boom)
-    with pytest.raises(Exception):
+    with pytest.raises(SphinxError):
         _build(tmp_path)
 
 
