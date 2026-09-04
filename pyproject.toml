@@ -25,3 +25,6 @@ docs = ["furo", "myst-parser>=2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sphinx_likec4"]
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"

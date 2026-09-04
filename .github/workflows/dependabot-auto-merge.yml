@@ -1,0 +1,57 @@
+name: Dependabot auto-merge
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    # Fires only after CI already succeeded for this exact commit — no reliance on
+    # branch protection / repo auto-merge settings to make merging wait for green.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR and check eligibility
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          number=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.pull_requests[0].number // empty')
+          if [ -z "$number" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+          author=$(gh pr view "$number" --repo "$REPO" --json author --jq '.author.login')
+          if [ "$author" != "dependabot[bot]" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Dependabot titles read "... bump <dep> from X... to Y..." — same leading
+          # version number means minor/patch (safe to auto-merge); a differing
+          # leading number is a major bump, left for manual review.
+          title=$(gh pr view "$number" --repo "$REPO" --json title --jq '.title')
+          from_major=$(echo "$title" | grep -oE 'from [0-9]+' | grep -oE '[0-9]+')
+          to_major=$(echo "$title" | grep -oE 'to [0-9]+' | grep -oE '[0-9]+')
+          if [ -z "$from_major" ] || [ -z "$to_major" ] || [ "$from_major" != "$to_major" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping auto-merge for #$number — major bump (or unparsable title): $title"
+            exit 0
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
+      - name: Merge
+        if: steps.check.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: gh pr merge "${{ steps.check.outputs.number }}" --repo "$REPO" --squash --delete-branch
