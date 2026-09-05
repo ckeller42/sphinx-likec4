@@ -142,7 +142,8 @@ def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str) -> 
     try:
         _run(npx, export, cwd=source_dir)
     except RuntimeError as e:
-        if "playwright" not in str(e).lower():
+        msg = str(e).lower()
+        if not any(k in msg for k in ("playwright", "browser", "executable")):
             raise
         _run(npx, ["--package", cli, "-c", "playwright install chromium"], cwd=source_dir)
         _run(npx, export, cwd=source_dir)

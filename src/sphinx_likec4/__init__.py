@@ -31,10 +31,14 @@ def _format_key(builder) -> str:
 
 def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
     """Render mode a builder gets when a directive doesn't say: ``likec4_render[fmt]`` first,
-    else ``iframe`` for HTML, ``png`` for any other builder that can embed images, ``text``
-    when it can't (text, man, linkcheck…).
+    else ``iframe`` for HTML (needs no image export, so it's available even when
+    ``image_capable`` is False — e.g. ``likec4_export_images = False``), ``png`` for any other
+    builder that can embed images, ``text`` when it can't (text, man, linkcheck…) or when
+    image export was turned off for a builder that would otherwise need it.
 
     >>> _default_render("html", True, {})
+    'iframe'
+    >>> _default_render("html", False, {})   # likec4_export_images=False: iframe needs no export
     'iframe'
     >>> _default_render("latex", True, {})
     'png'
@@ -42,12 +46,16 @@ def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
     'png'
     >>> _default_render("latex", True, {"latex": "jpg"})
     'jpg'
+    >>> _default_render("latex", False, {})  # not image-capable: falls back to text
+    'text'
     >>> _default_render("text", False, {"text": "png"})   # can't embed images: override ignored
     'text'
     """
+    if fmt == "html":
+        return overrides.get(fmt) or "iframe"
     if not image_capable:
         return "text"
-    return overrides.get(fmt) or ("iframe" if fmt == "html" else "png")
+    return overrides.get(fmt) or "png"
 
 
 def _builder_inited(app):
@@ -74,8 +82,14 @@ def _builder_inited(app):
         raise ConfigError(f"sphinx-likec4: likec4_render values must be one of {_RENDER_MODES}, got {bad!r}")
     env = app.env
     env.likec4_format = _format_key(app.builder)
-    env.likec4_render_default = _default_render(
-        env.likec4_format, bool(app.builder.supported_image_types), cfg.likec4_render)
+    image_capable = bool(app.builder.supported_image_types) and cfg.likec4_export_images
+    env.likec4_render_default = _default_render(env.likec4_format, image_capable, cfg.likec4_render)
+    # Doctrees are cached per document, not per builder, and the directives bake
+    # builder-specific nodes into them: switching builders on a shared doctree dir
+    # must re-read everything (see _env_get_outdated).
+    key = (env.likec4_format, env.likec4_render_default)
+    env.likec4_rerender = getattr(env, "likec4_render_key", key) != key
+    env.likec4_render_key = key
     env.likec4_images = {}
     env.likec4_dist = None
     if env.likec4_render_default == "text":
@@ -105,10 +119,20 @@ def _builder_inited(app):
         else:
             views = _runner.ensure_views(source_dir, cache_dir, cfg.likec4_version)
         # ponytail: exports png even if no directive asks; gate behind a flag if the Playwright time hurts
-        env.likec4_images = {
-            f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f))
-            for f in sorted(formats)
-        }
+        if image_capable:
+            try:
+                env.likec4_images = {
+                    f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f))
+                    for f in sorted(formats)
+                }
+            except RuntimeError as e:
+                if env.likec4_render_default in ("png", "jpg"):
+                    raise
+                # this builder renders iframes by default — a browser problem must not kill it
+                logger.warning("sphinx-likec4: image export failed; :render: png/jpg fall back to "
+                               "%s — %s", env.likec4_render_default, e,
+                               type="likec4", subtype="images")
+                env.likec4_images = {}
     except _runner.LikeC4Missing as e:
         if cfg.likec4_missing == "warn":
             logger.warning("sphinx-likec4: %s — views render as placeholders", e,
@@ -137,6 +161,15 @@ def _build_finished(app, exc):
         shutil.copytree(dist, target, dirs_exist_ok=True)
 
 
+def _env_get_outdated(app, env, added, changed, removed):
+    """``env-get-outdated`` handler: re-read every document when the render target changed.
+
+    ``-M html`` followed by ``-M latexpdf`` shares one doctree dir; without this, LaTeX
+    would be handed the cached HTML iframe nodes and drop them silently.
+    """
+    return set(env.found_docs) if getattr(env, "likec4_rerender", False) else set()
+
+
 def setup(app):
     """Sphinx extension entry point: register config values, directives, and hooks."""
     from ._directives import LikeC4Model, LikeC4View
@@ -145,8 +178,10 @@ def setup(app):
     app.add_config_value("likec4_missing", "error", "env")
     app.add_config_value("likec4_build_args", [], "env")
     app.add_config_value("likec4_render", {}, "env")
+    app.add_config_value("likec4_export_images", True, "env")
     app.add_directive("likec4-view", LikeC4View)
     app.add_directive("likec4-model", LikeC4Model)
     app.connect("builder-inited", _builder_inited)
+    app.connect("env-get-outdated", _env_get_outdated)
     app.connect("build-finished", _build_finished)
     return {"version": __version__, "parallel_read_safe": True, "parallel_write_safe": True}

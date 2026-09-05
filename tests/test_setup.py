@@ -23,4 +23,5 @@ def test_setup_registers_config_values():
     assert app.config_values["likec4_missing"] == ("error", "env")
     assert app.config_values["likec4_build_args"] == ([], "env")
     assert app.config_values["likec4_render"] == ({}, "env")
+    assert app.config_values["likec4_export_images"] == (True, "env")
     assert meta["parallel_read_safe"] is True

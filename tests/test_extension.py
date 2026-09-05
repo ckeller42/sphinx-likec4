@@ -97,6 +97,16 @@ def test_missing_node_warn_renders_placeholder(tmp_path, monkeypatch):
     assert "likec4-placeholder" in html and "<iframe" not in html
 
 
+def test_missing_node_warn_on_latex_renders_text(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise _runner.LikeC4Missing("no npx")
+    monkeypatch.setattr(_runner, "ensure_views", boom)
+    _, out = _app(tmp_path, builder="latex", strict=False,
+                  confoverrides={"likec4_missing": "warn"})
+    tex = next(out.glob("*.tex")).read_text()
+    assert "LikeC4 view" in tex and "LikeC4 model (interactive" in tex
+
+
 def test_missing_node_error_fails_build(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise _runner.LikeC4Missing("no npx")
@@ -317,6 +327,72 @@ def test_unknown_view_id_fails_latex_build_too(tmp_path, fake_build):
     src = _src(tmp_path, "s", "Bad\n===\n\n.. likec4-view:: nope\n")
     with pytest.raises(SphinxError):
         _app(tmp_path, srcdir=src, builder="latex")
+
+
+def test_switching_builders_on_a_shared_doctreedir_rerenders(tmp_path, fake_build):
+    # -M html then -M latexpdf share one doctree dir; the second build must not reuse
+    # doctrees that hold the HTML iframe nodes
+    dt = tmp_path / "dt"
+    with docutils_namespace():
+        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "html"), str(dt), "html",
+               warningiserror=True).build()
+    with docutils_namespace():
+        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "latex"), str(dt), "latex",
+               warningiserror=True).build()
+    tex = next((tmp_path / "latex").glob("*.tex")).read_text()
+    assert "\\sphinxincludegraphics" in tex and "{index}.png" in tex
+
+
+def test_export_images_false_disables_export_everywhere(tmp_path, fake_build, fake_images):
+    app, out = _app(tmp_path, confoverrides={"likec4_export_images": False})
+    assert fake_images == [] and app.env.likec4_render_default == "iframe"
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+    (tmp_path / "l").mkdir()
+    app2, out2 = _app(tmp_path / "l", builder="latex", confoverrides={"likec4_export_images": False})
+    assert app2.env.likec4_mode == "non-html" and fake_images == []
+    assert "LikeC4 view" in next(out2.glob("*.tex")).read_text()
+
+
+def test_image_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_build, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("chromium: error while loading shared libraries")
+    monkeypatch.setattr(_runner, "ensure_images", boom)
+    app, out = _app(tmp_path, confoverrides={"suppress_warnings": ["likec4"]})
+    assert app.env.likec4_images == {}
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+    # -W without suppression must still fail the build: Sphinx <8.1 raises on the first
+    # warning, Sphinx >=8.1 records it and exits non-zero
+    try:
+        strict_app, _ = _app(tmp_path / "strict")
+    except SphinxError:
+        pass
+    else:
+        assert strict_app.statuscode != 0
+
+
+def test_image_export_failure_fails_image_builders(tmp_path, fake_build, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("chromium: error while loading shared libraries")
+    monkeypatch.setattr(_runner, "ensure_images", boom)
+    with pytest.raises(SphinxError) as excinfo:
+        _app(tmp_path, builder="latex")
+    assert "shared libraries" in str(getattr(excinfo.value, "orig_exc", excinfo.value))
+
+
+def test_missing_exported_file_is_an_error(tmp_path, fake_build, monkeypatch):
+    def partial(source_dir, cache_dir, version, fmt):
+        out = cache_dir / f"images-{fmt}"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"index.{fmt}").write_bytes(_PNG)            # seqA deliberately missing
+        return out
+    monkeypatch.setattr(_runner, "ensure_images", partial)
+    with pytest.raises(SphinxError, match="no exported png for view 'seqA'"):
+        _app(tmp_path, builder="latex")
+
+
+def test_height_passes_through_in_image_mode(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :height: 200px\n")
+    assert "height: 200px" in (_build(tmp_path, srcdir=src) / "index.html").read_text()
 
 
 def test_epub_falls_back_to_image_and_plain_model(tmp_path, fake_build):

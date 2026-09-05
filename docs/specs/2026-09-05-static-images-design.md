@@ -145,3 +145,19 @@ View-id validation against `env.likec4_views` applies to all modes — that set 
 SVG/PDF export, per-view sequence layout in image mode, dark theme, exporting only referenced
 views (lazy export bypasses Sphinx's image collector and reimplements per-builder copying — the
 riskiest part of the extension, for a gain only large models would notice).
+
+## Amendments (execution, 2026-09-05)
+
+- epub is keyed `"epub"` via `_format_key` because Sphinx's epub builder reports `format ==
+  "html"` even though it can't host the iframe viewer.
+- The eager export at `builder-inited` is required for `parallel_read_safe`: the image collector
+  runs on `doctree-read`, after a document's directives, so a lazy per-directive export would
+  work only for serial reads.
+- Builder switches on a shared doctree dir re-read all documents via `env-get-outdated`, keyed on
+  `(format, default render)` — otherwise `-M html` followed by `-M latexpdf` reuses cached HTML
+  iframe nodes and drops them silently from the LaTeX output.
+- `warn` mode off HTML renders plain text instead of an invisible raw-HTML placeholder.
+- `likec4_export_images` opts out of the image export entirely.
+- An image-export `RuntimeError` is a warning on iframe-default builders (the build keeps
+  working without Chromium) and fatal on image-default builders.
+- `_image` raises a clear `ExtensionError` when the exported file is missing.

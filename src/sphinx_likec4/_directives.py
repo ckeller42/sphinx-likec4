@@ -45,6 +45,13 @@ def _text(text: str) -> nodes.paragraph:
     return para
 
 
+def _view_text(view: str) -> nodes.paragraph:
+    return _text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")
+
+
+_MODEL_TEXT = "LikeC4 model (interactive — see the HTML docs)"
+
+
 def _mode(argument):
     """Docutils option validator: accept only ``"diagram"`` or ``"sequence"``.
 
@@ -148,8 +155,10 @@ class LikeC4View(Directive):
         view = self.arguments[0]
         mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
-            return [_text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")]
+            return [_view_text(view)]
         if mode == "warn":                                  # build unavailable
+            if env.likec4_format != "html":
+                return [_view_text(view)]
             return [_placeholder(f"LikeC4 view “{view}” (viewer not built — node/npx unavailable)")]
         for f in getattr(env, "likec4_sources", ()):
             env.note_dependency(f)
@@ -165,7 +174,7 @@ class LikeC4View(Directive):
                                  env.likec4_format == "html", env.likec4_images)
         title = self.options.get("title", f"LikeC4 view {view}")
         if render == "text":
-            return [_text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")]
+            return [_view_text(view)]
         if render in ("png", "jpg"):
             return [self._image(env, view, render, title)]
         height = self.options.get("height", "460px")
@@ -190,6 +199,10 @@ class LikeC4View(Directive):
         # ponytail: :mode: sequence is ignored here — --seq is global to an export run; add a
         # filtered --seq pass into images-<fmt>/seq when someone needs sequence PNGs
         file = Path(env.likec4_images[fmt]) / f"{view}.{fmt}"
+        if not file.exists():
+            raise ExtensionError(
+                f"likec4-view: no exported {fmt} for view {view!r} in {file.parent} "
+                f"(likec4 export names files by view id; check the export dir)")
         uri = os.path.relpath(file, os.path.dirname(env.doc2path(env.docname)))
         opts = {k: v for k, v in self.options.items() if k in ("width", "height", "alt", "align", "scale")}
         opts.setdefault("alt", title)
@@ -209,11 +222,13 @@ class LikeC4Model(Directive):
         env = self.state.document.settings.env
         mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
-            return [_text("LikeC4 model (interactive — see the HTML docs)")]
+            return [_text(_MODEL_TEXT)]
         if mode == "warn":
+            if env.likec4_format != "html":
+                return [_text(_MODEL_TEXT)]
             return [_placeholder("LikeC4 model (viewer not built — node/npx unavailable)")]
         if env.likec4_format != "html":                     # the gallery has no single-image form
-            return [_text("LikeC4 model (interactive — see the HTML docs)")]
+            return [_text(_MODEL_TEXT)]
         for f in getattr(env, "likec4_sources", ()):
             env.note_dependency(f)
         src = _rel(env.docname) + "_likec4/"
