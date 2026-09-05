@@ -13,7 +13,7 @@ Builders that can embed images (LaTeX/PDF, epub) render views as static PNG by d
 builders that can't (text, man, linkcheck) render plain text. Install: `pip install sphinx-likec4`.
 `likec4-view` `:render:` iframe|png|jpg|text and `likec4_render` config select static PNG/JPG
 per directive or per output format; non-HTML builders (PDF, epub) default to PNG; `:mode: sequence`
-selects the sequence-layout PNG of a dynamic view. Export uses Playwright/Chromium via the likec4
+selects the sequence-layout image (PNG or JPG) of a dynamic view. Export uses Playwright/Chromium via the likec4
 CLI; a browser is installed once if missing.
 
 ## Docs

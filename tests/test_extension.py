@@ -394,7 +394,7 @@ def test_image_export_failure_fails_image_builders(tmp_path, fake_build, monkeyp
 
 
 def test_missing_exported_file_is_an_error(tmp_path, fake_build, monkeypatch):
-    def partial(source_dir, cache_dir, version, fmt):
+    def partial(source_dir, cache_dir, version, fmt, seq_views=()):
         out = cache_dir / f"images-{fmt}"
         out.mkdir(parents=True, exist_ok=True)
         (out / f"index.{fmt}").write_bytes(_PNG)            # seqA deliberately missing
@@ -472,3 +472,21 @@ def test_seq_pass_runs_for_latex_and_is_read_by_mode_sequence(tmp_path, fake_bui
     app, out = _app(tmp_path, srcdir=src, builder="latex")
     assert fake_images == ["png", "png-seq"] and app.env.likec4_dynamic_views == {"seqA"}
     assert (out / "seqA.png").read_bytes() == _PNG_SEQ
+
+
+def test_seq_export_failure_keeps_normal_images_on_iframe_builders(tmp_path, fake_build, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+
+    def flaky(source_dir, cache_dir, version, fmt, seq_views=()):
+        if seq_views:
+            raise RuntimeError("chromium crashed during the --seq pass")
+        out = cache_dir / f"images-{fmt}"
+        out.mkdir(parents=True, exist_ok=True)
+        for view in ("index", "seqA"):
+            (out / f"{view}.{fmt}").write_bytes(_PNG)
+        return out
+    monkeypatch.setattr(_runner, "ensure_images", flaky)
+    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n")
+    app, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
+    assert set(app.env.likec4_images) == {"png"} and app.env.likec4_images_seq == {}
+    assert (out / "_images" / "seqA.png").read_bytes() == _PNG      # diagram layout stands in

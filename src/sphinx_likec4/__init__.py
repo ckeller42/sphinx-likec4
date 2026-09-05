@@ -130,27 +130,31 @@ def _builder_inited(app):
                 source_dir, cache_dir, cfg.likec4_version, list(cfg.likec4_build_args)))
         # ponytail: exports png even if no directive asks; gate behind a flag if the Playwright time hurts
         if image_capable:
-            try:
-                env.likec4_images = {
-                    f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f))
-                    for f in sorted(formats)
-                }
-                # dynamic views once more in sequence layout, for ":mode: sequence" — a
-                # separate pass because the CLI's --seq applies to the whole export
-                env.likec4_images_seq = {
-                    f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f,
-                                                 seq_views=dynamic))
-                    for f in sorted(formats)
-                } if dynamic else {}
-            except RuntimeError as e:
+            def export(seq_views=()):
+                return {f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f,
+                                                     seq_views=seq_views))
+                        for f in sorted(formats)}
+
+            def failed(what, e):
                 if env.likec4_render_default in ("png", "jpg"):
-                    raise
+                    raise e
                 # this builder renders iframes by default — a browser problem must not kill it
-                logger.warning("sphinx-likec4: image export failed; :render: png/jpg fall back to "
-                               "%s — %s", env.likec4_render_default, e,
-                               type="likec4", subtype="images")
-                env.likec4_images = {}
-                env.likec4_images_seq = {}
+                logger.warning("sphinx-likec4: %s export failed; affected :render: png/jpg fall "
+                               "back — %s", what, e, type="likec4", subtype="images")
+                return {}
+
+            try:
+                env.likec4_images = export()
+            except RuntimeError as e:
+                env.likec4_images = failed("image", e)
+            # dynamic views once more in sequence layout, for ":mode: sequence" — a separate
+            # pass because the CLI's --seq applies to the whole export; its failure leaves the
+            # normal images usable
+            if dynamic and env.likec4_images:
+                try:
+                    env.likec4_images_seq = export(seq_views=dynamic)
+                except RuntimeError as e:
+                    env.likec4_images_seq = failed("sequence image", e)
     except _runner.LikeC4Missing as e:
         if cfg.likec4_missing == "warn":
             logger.warning("sphinx-likec4: %s — views render as placeholders", e,
