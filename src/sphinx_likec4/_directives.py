@@ -97,10 +97,10 @@ def _resolve_render(requested: str | None, default: str, is_html: bool, images: 
     'text'
     >>> _resolve_render("text", "iframe", True, {"png": "/c"})
     'text'
-    >>> _resolve_render("jpg", "png", False, {"png": "/c"})  # doctest: +IGNORE_EXCEPTION_DETAIL
+    >>> _resolve_render("jpg", "png", False, {"png": "/c"})
     Traceback (most recent call last):
         ...
-    ExtensionError: likec4-view: ':render: jpg' needs "jpg" in likec4_render
+    sphinx.errors.ExtensionError: likec4-view: ':render: jpg' needs "jpg" in likec4_render (only png was exported)
     """
     if not requested:
         return default
