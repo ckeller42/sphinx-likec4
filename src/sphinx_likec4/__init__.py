@@ -101,6 +101,8 @@ def _builder_inited(app):
     env.likec4_rerender = getattr(env, "likec4_render_key", key) != key
     env.likec4_render_key = key
     env.likec4_images = {}
+    env.likec4_images_seq = {}
+    env.likec4_dynamic_views = set()
     env.likec4_dist = None
     if env.likec4_render_default == "text":
         env.likec4_mode = "non-html"
@@ -122,12 +124,10 @@ def _builder_inited(app):
     # file); jpg only when this or any other format's config asks for it.
     formats = {"png"} | {v for v in (env.likec4_render_default, *cfg.likec4_render.values()) if v == "jpg"}
     try:
+        views, dynamic = _runner.ensure_views(source_dir, cache_dir, cfg.likec4_version)
         if env.likec4_format == "html":
-            dist, views = _runner.ensure_build(
-                source_dir, cache_dir, cfg.likec4_version, list(cfg.likec4_build_args))
-            env.likec4_dist = str(dist)
-        else:
-            views = _runner.ensure_views(source_dir, cache_dir, cfg.likec4_version)
+            env.likec4_dist = str(_runner.ensure_build(
+                source_dir, cache_dir, cfg.likec4_version, list(cfg.likec4_build_args)))
         # ponytail: exports png even if no directive asks; gate behind a flag if the Playwright time hurts
         if image_capable:
             try:
@@ -135,6 +135,13 @@ def _builder_inited(app):
                     f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f))
                     for f in sorted(formats)
                 }
+                # dynamic views once more in sequence layout, for ":mode: sequence" — a
+                # separate pass because the CLI's --seq applies to the whole export
+                env.likec4_images_seq = {
+                    f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f,
+                                                 seq_views=dynamic))
+                    for f in sorted(formats)
+                } if dynamic else {}
             except RuntimeError as e:
                 if env.likec4_render_default in ("png", "jpg"):
                     raise
@@ -143,6 +150,7 @@ def _builder_inited(app):
                                "%s — %s", env.likec4_render_default, e,
                                type="likec4", subtype="images")
                 env.likec4_images = {}
+                env.likec4_images_seq = {}
     except _runner.LikeC4Missing as e:
         if cfg.likec4_missing == "warn":
             logger.warning("sphinx-likec4: %s — views render as placeholders", e,
@@ -151,10 +159,12 @@ def _builder_inited(app):
             env.likec4_views = None
             env.likec4_dist = None
             env.likec4_images = {}
+            env.likec4_images_seq = {}
             return
         raise ConfigError(f"sphinx-likec4: {e} (set likec4_missing='warn' to build without it)")
     env.likec4_mode = "ready"
     env.likec4_views = views
+    env.likec4_dynamic_views = dynamic
 
 
 def _build_finished(app, exc):

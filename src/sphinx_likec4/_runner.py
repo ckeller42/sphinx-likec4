@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 
@@ -66,6 +67,27 @@ def _view_ids(data: object) -> set[str]:
     return ids
 
 
+def _dynamic_view_ids(data: object) -> set[str]:
+    """Ids of ``dynamic view``s in `likec4 export json` output (``"_type": "dynamic"``).
+
+    >>> sorted(_dynamic_view_ids({"views": {"a": {"_type": "element"}, "b": {"_type": "dynamic"}}}))
+    ['b']
+    >>> _dynamic_view_ids([{"views": {"a": {"_type": "dynamic"}}}, {"views": {"b": {}}}])
+    {'a'}
+    >>> _dynamic_view_ids({"nodes": {}})
+    set()
+    """
+    ids: set[str] = set()
+    if isinstance(data, dict):
+        views = data.get("views")
+        if isinstance(views, dict):
+            ids |= {k for k, v in views.items() if isinstance(v, dict) and v.get("_type") == "dynamic"}
+    elif isinstance(data, list):
+        for item in data:
+            ids |= _dynamic_view_ids(item)
+    return ids
+
+
 def _require_npx() -> str:
     """Return the ``npx`` path, or raise :class:`LikeC4Missing` when node isn't installed."""
     npx = _npx()
@@ -74,71 +96,73 @@ def _require_npx() -> str:
     return npx
 
 
-def ensure_build(source_dir: Path, cache_dir: Path, version: str,
-                 build_args: list[str]) -> tuple[Path, set[str]]:
-    """Build the viewer into ``cache_dir/dist`` (skipped on hash match); return (dist, view ids)."""
-    npx = _require_npx()
+def ensure_build(source_dir: Path, cache_dir: Path, version: str, build_args: list[str]) -> Path:
+    """Build the viewer into ``cache_dir/dist`` (skipped on hash match); return ``dist``.
 
+    View ids come from :func:`ensure_views`, which every builder runs.
+    """
+    npx = _require_npx()
     cache_dir.mkdir(parents=True, exist_ok=True)
     dist = cache_dir / "dist"
     stamp = cache_dir / "stamp"
-    views_file = cache_dir / "views.json"
     digest = source_hash(source_dir, version, build_args)
-
-    if stamp.exists() and stamp.read_text() == digest and dist.exists() and views_file.exists():
-        return dist, set(json.loads(views_file.read_text()))
-
+    if stamp.exists() and stamp.read_text() == digest and dist.exists():
+        return dist
     shutil.rmtree(dist, ignore_errors=True)    # stale hashed assets must not accumulate
-    cli = f"likec4@{version}"
-    _run(npx, [cli, "build", "--use-hash-history", "--base", "./",
+    _run(npx, [f"likec4@{version}", "build", "--use-hash-history", "--base", "./",
                "-o", str(dist), *build_args, str(source_dir)], cwd=source_dir)
-    export = cache_dir / "model.json"
-    _run(npx, [cli, "export", "json", "-o", str(export), str(source_dir)], cwd=source_dir)
-    views = _view_ids(json.loads(export.read_text()))
-    views_file.write_text(json.dumps(sorted(views)))
     stamp.write_text(digest)
-    return dist, views
+    return dist
 
 
-def ensure_views(source_dir: Path, cache_dir: Path, version: str) -> set[str]:
-    """Return the model's view ids via ``likec4 export json`` (cached on the source hash).
+def ensure_views(source_dir: Path, cache_dir: Path, version: str) -> tuple[set[str], set[str]]:
+    """Return ``(all view ids, dynamic view ids)`` via ``likec4 export json`` (cached).
 
-    For builders that need images but no viewer build (LaTeX, epub…); ``ensure_build``
-    keeps its own copy of this step because its stamp already covers it.
+    Dynamic views are the ones a ``--seq`` export renders as sequence diagrams.
     """
     npx = _require_npx()
     cache_dir.mkdir(parents=True, exist_ok=True)
     stamp, views_file = cache_dir / "views.stamp", cache_dir / "views-only.json"
-    digest = source_hash(source_dir, version, ["json"])
+    digest = source_hash(source_dir, version, ["json", "2"])   # "2": file schema with dynamic ids
     if stamp.exists() and stamp.read_text() == digest and views_file.exists():
-        return set(json.loads(views_file.read_text()))
+        cached = json.loads(views_file.read_text())
+        return set(cached["views"]), set(cached["dynamic"])
     export = cache_dir / "model.json"
     _run(npx, [f"likec4@{version}", "export", "json", "-o", str(export), str(source_dir)],
          cwd=source_dir)
-    views = _view_ids(json.loads(export.read_text()))
-    views_file.write_text(json.dumps(sorted(views)))
+    data = json.loads(export.read_text())
+    views, dynamic = _view_ids(data), _dynamic_view_ids(data)
+    views_file.write_text(json.dumps({"views": sorted(views), "dynamic": sorted(dynamic)}))
     stamp.write_text(digest)
-    return views
+    return views, dynamic
 
 
-def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str) -> Path:
-    """Export every view as ``<view-id>.<fmt>`` into ``cache_dir/images-<fmt>`` (cached).
+def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
+                  seq_views: Iterable[str] = ()) -> Path:
+    """Export views as ``<view-id>.<fmt>`` into ``cache_dir/images-<fmt>`` (cached).
 
-    ``fmt`` is ``"png"`` or ``"jpg"``. The export drives headless Chromium through
-    Playwright; if the first attempt fails for lack of a browser, install Chromium once
-    through likec4's *own* Playwright (so the browser revision matches) and retry. Any
-    other failure, or a second one, propagates as ``RuntimeError``.
+    ``fmt`` is ``"png"`` or ``"jpg"``. With ``seq_views`` (dynamic view ids), export only
+    those with ``--seq`` — sequence layout — into ``images-<fmt>-seq`` instead; the CLI's
+    ``--seq`` applies to the whole run, hence a separate pass and directory.
+
+    The export drives headless Chromium through Playwright; if the first attempt fails for
+    lack of a browser, install Chromium once through likec4's *own* Playwright (so the
+    browser revision matches) and retry. Any other failure, or a second one, propagates as
+    ``RuntimeError``.
     """
     npx = _require_npx()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    out = cache_dir / f"images-{fmt}"
-    stamp = cache_dir / f"images-{fmt}.stamp"
-    digest = source_hash(source_dir, version, [fmt])
+    seq = sorted(seq_views)
+    name = f"images-{fmt}-seq" if seq else f"images-{fmt}"
+    out, stamp = cache_dir / name, cache_dir / f"{name}.stamp"
+    digest = source_hash(source_dir, version, [fmt, *(["seq", *seq] if seq else [])])
     if stamp.exists() and stamp.read_text() == digest and out.is_dir():
         return out
     shutil.rmtree(out, ignore_errors=True)
     cli = f"likec4@{version}"
-    export = [cli, "export", fmt, "--flat", "-o", str(out), str(source_dir)]
+    filters = [arg for v in seq for arg in ("-f", v)]
+    export = [cli, "export", fmt, "--flat", *(["--seq"] if seq else []), *filters,
+              "-o", str(out), str(source_dir)]
     try:
         _run(npx, export, cwd=source_dir)
     except RuntimeError as e:

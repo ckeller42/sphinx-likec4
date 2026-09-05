@@ -30,26 +30,20 @@ def test_ensure_build_runs_cli_once_then_caches(tmp_path, monkeypatch):
 
     def fake_run(cmd, **kw):
         calls.append(cmd)
-        if "build" in cmd:
-            dist = Path(cmd[cmd.index("-o") + 1])
-            dist.mkdir(parents=True, exist_ok=True)
-            (dist / "index.html").write_text("<html>viewer</html>")
-        else:  # export json
-            out = Path(cmd[cmd.index("-o") + 1])
-            out.write_text(json.dumps({"views": {"index": {}, "seqA": {}}}))
+        dist = Path(cmd[cmd.index("-o") + 1])
+        dist.mkdir(parents=True, exist_ok=True)
+        (dist / "index.html").write_text("<html>viewer</html>")
         return type("R", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
 
     monkeypatch.setattr(_runner, "_npx", lambda: "npx")
     monkeypatch.setattr(_runner.subprocess, "run", fake_run)
 
-    dist, views = _runner.ensure_build(src, cache, "1.59.2", [])
+    dist = _runner.ensure_build(src, cache, "1.59.2", [])
     assert (dist / "index.html").exists()
-    assert views == {"index", "seqA"}
-    n = len(calls)
+    assert len(calls) == 1 and "build" in calls[0]         # viewer build only; ids come from ensure_views
 
-    _dist2, views2 = _runner.ensure_build(src, cache, "1.59.2", [])
-    assert len(calls) == n            # cache hit: no new CLI calls
-    assert views2 == views
+    assert _runner.ensure_build(src, cache, "1.59.2", []) == dist
+    assert len(calls) == 1            # cache hit: no new CLI calls
 
 
 def test_ensure_build_raises_when_npx_missing(tmp_path, monkeypatch):
@@ -69,14 +63,18 @@ def _fake_cli(calls, fail_first_export_with: bytes | None = None):
             return ok
         fmt = cmd[cmd.index("export") + 1]
         if fmt == "json":
-            Path(cmd[cmd.index("-o") + 1]).write_text(json.dumps({"views": {"index": {}}}))
+            Path(cmd[cmd.index("-o") + 1]).write_text(json.dumps({"views": {
+                "index": {"_type": "element"}, "seqA": {"_type": "dynamic"}}}))
             return ok
         if fail_first_export_with and not state["failed"]:
             state["failed"] = True
             return type("R", (), {"returncode": 1, "stdout": b"", "stderr": fail_first_export_with})()
         out = Path(cmd[cmd.index("-o") + 1])
         out.mkdir(parents=True, exist_ok=True)
-        (out / f"index.{fmt}").write_bytes(b"img")
+        # `-f <id>` filters restrict the export to those ids, as the real CLI does
+        wanted = [cmd[i + 1] for i, a in enumerate(cmd) if a == "-f"] or ["index", "seqA"]
+        for view in wanted:
+            (out / f"{view}.{fmt}").write_bytes(b"seq" if "--seq" in cmd else b"img")
         return ok
 
     return fake_run
@@ -88,10 +86,29 @@ def test_ensure_views_runs_export_json_once_then_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner, "_npx", lambda: "npx")
     monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
 
-    assert _runner.ensure_views(src, tmp_path / "c", "1.59.2") == {"index"}
+    expected = ({"index", "seqA"}, {"seqA"})               # (all views, dynamic views)
+    assert _runner.ensure_views(src, tmp_path / "c", "1.59.2") == expected
     assert len(calls) == 1 and "json" in calls[0]
-    assert _runner.ensure_views(src, tmp_path / "c", "1.59.2") == {"index"}
+    assert _runner.ensure_views(src, tmp_path / "c", "1.59.2") == expected
     assert len(calls) == 1                                  # cache hit
+
+
+def test_ensure_images_seq_pass_exports_only_dynamic_views(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+
+    plain = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
+    seq = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", seq_views={"seqA"})
+    assert seq == tmp_path / "c" / "images-png-seq" and seq != plain
+    cmd = calls[1]
+    assert "--seq" in cmd and cmd[cmd.index("-f") + 1] == "seqA" and cmd.count("-f") == 1
+    assert (seq / "seqA.png").read_bytes() == b"seq" and not (seq / "index.png").exists()
+    assert (plain / "seqA.png").read_bytes() == b"img"      # the plain pass is untouched
+
+    assert _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", seq_views=["seqA"]) == seq
+    assert len(calls) == 2                                  # cache hit, independent of the plain stamp
 
 
 def test_ensure_images_exports_flat_then_caches(tmp_path, monkeypatch):

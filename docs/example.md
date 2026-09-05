@@ -16,6 +16,16 @@ LikeC4's official [`cloud-system` example](https://github.com/likec4/likec4/tree
 :mode: sequence
 ```
 
+The same dynamic view as a static **sequence** PNG (`:mode: sequence` + `:render: png`) — this is
+what a PDF build gets for it:
+
+```{likec4-view} cloud-to-amazon
+:render: png
+:mode: sequence
+:width: 100%
+:alt: cloud-to-amazon dynamic view, sequence layout as a static PNG
+```
+
 ## Static image
 
 The same structural view rendered as a **PNG** — this is what every non-HTML builder
