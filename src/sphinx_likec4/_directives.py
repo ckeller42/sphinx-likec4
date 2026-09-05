@@ -66,20 +66,36 @@ def _mode(argument):
 
 
 def _height(argument):
-    """Docutils option validator for CSS length strings like ``"460px"`` or ``"60vh"``.
+    """Docutils option validator: a CSS length (``"460px"``, ``"60vh"``, ``"50%"``) or any
+    docutils image length (``"12pt"``, unitless ``"100"`` = pixels).
 
     >>> _height("460px")
     '460px'
     >>> _height("60%")
     '60%'
-    >>> _height("460")
+    >>> _height("100")
+    '100'
+    >>> _height("12pt")
+    '12pt'
+    >>> _height("tall")  # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
-    ValueError: height must match '^[0-9]+(px|em|rem|vh|%)$', got '460'
+    ValueError: ...
     """
-    if not argument or not _HEIGHT_RE.match(argument):
-        raise ValueError(f"height must match {_HEIGHT_RE.pattern!r}, got {argument!r}")
-    return argument
+    if argument and _HEIGHT_RE.match(argument):
+        return argument
+    return directives.length_or_unitless(argument)
+
+
+def _css_height(height: str) -> str:
+    """Docutils allows a unitless height (pixels); CSS does not — add the unit for iframes.
+
+    >>> _css_height("300")
+    '300px'
+    >>> _css_height("12pt")
+    '12pt'
+    """
+    return f"{height}px" if height.isdigit() else height
 
 
 _RENDER_MODES = ("iframe", "png", "jpg", "text")
@@ -177,7 +193,7 @@ class LikeC4View(Directive):
             return [_view_text(view)]
         if render in ("png", "jpg"):
             return [self._image(env, view, render, title)]
-        height = self.options.get("height", "460px")
+        height = _css_height(self.options.get("height", "460px"))
         title = html.escape(title, quote=True)
         src = _rel(env.docname) + f"_likec4/#/view/{html.escape(view, quote=True)}/"
         dyn_mode = self.options.get("mode")
@@ -235,7 +251,7 @@ class LikeC4Model(Directive):
         if "link-only" in self.options:
             content = f'<p><a class="likec4-model-link" href="{src}">Open the interactive model</a></p>'
         else:
-            height = self.options.get("height", "600px")
+            height = _css_height(self.options.get("height", "600px"))
             content = (
                 f'<iframe class="likec4-model" src="{src}" loading="lazy" '
                 f'title="LikeC4 model" style="width:100%;height:{height};'

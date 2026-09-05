@@ -55,8 +55,14 @@ def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
     'text'
     >>> _default_render("html", False, {"html": "png"})   # export disabled: image override ignored
     'iframe'
+    >>> _default_render("latex", True, {"latex": "iframe"})   # no iframes off HTML: image instead
+    'png'
+    >>> _default_render("latex", False, {"latex": "iframe"})
+    'text'
     """
     mode = overrides.get(fmt) or ("iframe" if fmt == "html" else "png")
+    if mode == "iframe" and fmt != "html":      # only HTML can host the viewer
+        mode = "png"
     if mode in ("png", "jpg") and not image_capable:
         return "iframe" if fmt == "html" else "text"
     return mode

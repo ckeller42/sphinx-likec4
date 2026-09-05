@@ -420,3 +420,22 @@ def test_epub_falls_back_to_image_and_plain_model(tmp_path, fake_build):
     assert "index.png" in xhtml
     assert "LikeC4 model (interactive" in xhtml
     assert fake_build == []                                 # no viewer build for epub
+
+
+def test_likec4_render_iframe_for_latex_falls_back_to_png(tmp_path, fake_build):
+    # iframes only exist on HTML: a config override asking for one on LaTeX yields the image
+    app, out = _app(tmp_path, builder="latex", confoverrides={"likec4_render": {"latex": "iframe"}})
+    assert app.env.likec4_render_default == "png"
+    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
+
+
+def test_docutils_image_heights_are_accepted(tmp_path, fake_build):
+    src = _src(tmp_path, "s", (
+        "H\n=\n\n.. likec4-view:: index\n   :render: png\n   :height: 100\n\n"
+        ".. likec4-view:: index\n   :render: png\n   :height: 12pt\n\n"
+        ".. likec4-view:: seqA\n   :height: 300\n"))
+    html = (_build(tmp_path, srcdir=src) / "index.html").read_text()
+    # unitless image height → pixels: docutils <0.22 emits style="height: 100px", 0.22+ height="100"
+    assert "height: 100px" in html or 'height="100"' in html
+    assert "height: 12pt" in html
+    assert "height:300px" in html                  # unitless iframe height gets its CSS unit
