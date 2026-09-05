@@ -317,3 +317,15 @@ def test_unknown_view_id_fails_latex_build_too(tmp_path, fake_build):
     src = _src(tmp_path, "s", "Bad\n===\n\n.. likec4-view:: nope\n")
     with pytest.raises(SphinxError):
         _app(tmp_path, srcdir=src, builder="latex")
+
+
+def test_epub_falls_back_to_image_and_plain_model(tmp_path, fake_build):
+    # epub's builder reports format == "html" but likec4_format is "epub": an explicit
+    # :render: iframe must resolve to the image, and the model embed to plain text
+    src = _src(tmp_path, "s", "E\n=\n\n.. likec4-view:: index\n   :render: iframe\n\n.. likec4-model::\n")
+    _, out = _app(tmp_path, srcdir=src, builder="epub", strict=False)
+    xhtml = (out / "index.xhtml").read_text()
+    assert "<iframe" not in xhtml
+    assert "index.png" in xhtml
+    assert "LikeC4 model (interactive" in xhtml
+    assert fake_build == []                                 # no viewer build for epub
