@@ -132,7 +132,7 @@ class LikeC4View(Directive):
     def run(self):
         env = self.state.document.settings.env
         view = self.arguments[0]
-        mode = getattr(env, "likec4_mode", "html")
+        mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
             para = nodes.paragraph()
             para += nodes.Text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")
@@ -174,7 +174,7 @@ class LikeC4Model(Directive):
 
     def run(self):
         env = self.state.document.settings.env
-        mode = getattr(env, "likec4_mode", "html")
+        mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
             para = nodes.paragraph()
             para += nodes.Text("LikeC4 model (interactive — see the HTML docs)")

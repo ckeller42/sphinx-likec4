@@ -11,23 +11,54 @@ from sphinx_likec4 import _runner
 ROOT = Path(__file__).parent / "roots" / "test-basic"
 
 
+# 1×1 transparent PNG; Sphinx only sniffs the header, so it also stands in for .jpg files
+_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da"
+    "63f8ffff3f0300050001ff5fd5ac0000000049454e44ae426082")
+
+
+@pytest.fixture(autouse=True)
+def fake_images(monkeypatch):
+    """Every image-capable build exports images; fake both export entry points, record formats."""
+    calls = []
+
+    def fake(source_dir, cache_dir, version, fmt):
+        calls.append(fmt)
+        out = cache_dir / f"images-{fmt}"
+        out.mkdir(parents=True, exist_ok=True)
+        for view in ("index", "seqA"):
+            (out / f"{view}.{fmt}").write_bytes(_PNG)
+        return out
+
+    monkeypatch.setattr(_runner, "ensure_images", fake)
+    monkeypatch.setattr(_runner, "ensure_views", lambda source_dir, cache_dir, version: {"index", "seqA"})
+    return calls
+
+
 @pytest.fixture
 def fake_build(monkeypatch):
+    calls = []
+
     def fake(source_dir, cache_dir, version, build_args):
+        calls.append(build_args)
         dist = cache_dir / "dist"
         dist.mkdir(parents=True, exist_ok=True)
         (dist / "index.html").write_text("<html>fake viewer</html>")
         return dist, {"index", "seqA"}
     monkeypatch.setattr(_runner, "ensure_build", fake)
-    return fake
+    return calls
+
+
+def _app(tmp_path, srcdir=ROOT, confoverrides=None, builder="html", strict=True):
+    out = tmp_path / "out"
+    app = Sphinx(str(srcdir), str(srcdir), str(out), str(tmp_path / "doctrees"),
+                 builder, confoverrides=confoverrides or {}, warningiserror=strict)
+    app.build()
+    return app, out
 
 
 def _build(tmp_path, srcdir=ROOT, confoverrides=None):
-    out = tmp_path / "out"
-    app = Sphinx(str(srcdir), str(srcdir), str(out), str(tmp_path / "doctrees"),
-                 "html", confoverrides=confoverrides or {}, warningiserror=True)
-    app.build()
-    return out
+    return _app(tmp_path, srcdir, confoverrides)[1]
 
 
 def test_view_iframes_and_viewer_copy(tmp_path, fake_build):
@@ -157,3 +188,53 @@ def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
     (src / "sub" / "page.rst").unlink()
     out = _build(tmp_path, srcdir=src)
     assert 'src="_likec4/#/view/seqA/?dynamic=sequence"' in (out / "index.html").read_text()
+
+
+def test_html_default_is_iframe_and_still_exports_png(tmp_path, fake_build, fake_images):
+    app, _ = _app(tmp_path)
+    assert app.env.likec4_mode == "ready"
+    assert app.env.likec4_render_default == "iframe"
+    assert set(app.env.likec4_images) == {"png"} and fake_images == ["png"]
+    assert app.env.likec4_dist is not None
+
+
+def test_latex_default_is_png_without_viewer_build(tmp_path, fake_build, fake_images):
+    app, _ = _app(tmp_path, builder="latex")
+    assert app.env.likec4_mode == "ready"
+    assert app.env.likec4_render_default == "png"
+    assert fake_images == ["png"]
+    assert fake_build == []                                 # no viewer build off HTML
+    assert app.env.likec4_dist is None
+    assert app.env.likec4_views == {"index", "seqA"}        # ids come from ensure_views
+
+
+def test_text_builder_exports_nothing(tmp_path, fake_images):
+    app, _ = _app(tmp_path, builder="text")
+    assert app.env.likec4_mode == "non-html"
+    assert app.env.likec4_render_default == "text"
+    assert fake_images == []
+
+
+def test_likec4_render_override_adds_jpg_export(tmp_path, fake_build, fake_images):
+    app, _ = _app(tmp_path, builder="latex", confoverrides={"likec4_render": {"latex": "jpg"}})
+    assert app.env.likec4_render_default == "jpg"
+    assert sorted(fake_images) == ["jpg", "png"]            # png is always exported
+
+
+def test_likec4_render_for_another_format_still_exports_that_format(tmp_path, fake_build, fake_images):
+    # an HTML build must export jpg too when some other builder's config names it —
+    # the same .rst may carry ":render: jpg" and the resolver only knows what was exported
+    _app(tmp_path, confoverrides={"likec4_render": {"latex": "jpg"}})
+    assert sorted(fake_images) == ["jpg", "png"]
+
+
+def test_likec4_render_rejects_unknown_mode(tmp_path, fake_build):
+    with pytest.raises(SphinxError, match="likec4_render"):
+        _app(tmp_path, confoverrides={"likec4_render": {"html": "svg"}})
+
+
+def test_epub_is_image_capable(tmp_path, fake_build, fake_images):
+    # strict=False: Sphinx's epub builder warns about its own unset epub_* config values,
+    # which has nothing to do with this extension
+    app, _ = _app(tmp_path, builder="epub", strict=False)
+    assert app.env.likec4_render_default == "png" and fake_images == ["png"]
