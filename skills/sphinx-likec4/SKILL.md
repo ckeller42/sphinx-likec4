@@ -47,7 +47,8 @@ MyST markdown form:
 - `<view-id>` = the view name from your `views { view <id> ... }` / `dynamic view <id>` blocks.
   Dynamic views share the same id space; `:mode: sequence` opens them in sequence rendering.
 - An **unknown view id fails the build** (lists the known ids) — fix the id, don't retry blindly.
-- Non-HTML builders (text/latex/epub) render plain text automatically.
+- LaTeX/PDF and epub builds render views as static PNG automatically (default `png`); only
+  builders that cannot embed images at all (text, man, linkcheck) fall back to plain text.
 
 ## Configuration
 
