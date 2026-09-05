@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sphinx-likec4"
-version = "0.1.0"
+version = "0.2.0"
 description = "Embed interactive LikeC4 architecture views (including dynamic-view sequences) in Sphinx documentation"
 readme = "README.md"
 license = "MIT"

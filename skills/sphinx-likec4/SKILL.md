@@ -15,6 +15,7 @@ Do not guess directive names — the exact surface is below and nothing else exi
 # conf.py
 extensions = ["sphinx_likec4"]
 likec4_source_dir = "model"          # dir of .c4/.likec4 files, relative to conf.py — REQUIRED
+likec4_render = {"latex": "jpg"}     # optional: default render mode per output format (keyed by builder format; epub uses "epub")
 ```
 
 Install: `pip install sphinx-likec4` (PyPI) or `pip install "sphinx-likec4 @ git+https://github.com/ckeller42/sphinx-likec4"`.
@@ -26,6 +27,8 @@ Install: `pip install sphinx-likec4` (PyPI) or `pip install "sphinx-likec4 @ git
    :height: 420px            # optional, default 460px
    :title: Upload flow       # optional iframe title (a11y)
    :mode: sequence           # optional: diagram (default) | sequence — dynamic views only
+   :render: png              # optional: iframe (HTML default) | png | jpg | text — a preference; non-HTML builders default to png
+   :width: 80%               # image-mode passthroughs: width, height, alt, align, scale
 
 .. likec4-model::            # embed the whole viewer gallery
    :height: 600px

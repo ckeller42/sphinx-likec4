@@ -10,6 +10,9 @@ Key facts: directives `likec4-view` (options: `height`, `title`, `mode: diagram|
 `likec4-model` (options: `height`, `link-only`); conf.py values `likec4_source_dir` (required),
 `likec4_version` (pinned default), `likec4_missing` (`error`|`warn`), `likec4_build_args`.
 Non-HTML builders render plain text. Install: `pip install sphinx-likec4`.
+`likec4-view` `:render:` iframe|png|jpg|text and `likec4_render` config select static PNG/JPG
+per directive or per output format; non-HTML builders (PDF, epub) default to PNG. Export uses
+Playwright/Chromium via the likec4 CLI; a browser is installed once if missing.
 
 ## Docs
 

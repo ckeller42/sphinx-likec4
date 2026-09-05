@@ -7,7 +7,7 @@ from pathlib import Path
 from sphinx.errors import ConfigError
 from sphinx.util import logging
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 DEFAULT_LIKEC4_VERSION = "1.59.2"
 logger = logging.getLogger(__name__)
 
