@@ -34,7 +34,10 @@ def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
     else ``iframe`` for HTML (needs no image export, so it's available even when
     ``image_capable`` is False — e.g. ``likec4_export_images = False``), ``png`` for any other
     builder that can embed images, ``text`` when it can't (text, man, linkcheck…) or when
-    image export was turned off for a builder that would otherwise need it.
+    image export was turned off for a builder that would otherwise need it. An image mode
+    (``png``/``jpg``), whether from an override or the built-in default, always requires image
+    capability — HTML included, so a ``likec4_render = {"html": "png"}`` override can't demand an
+    export that ``likec4_export_images = False`` disabled.
 
     >>> _default_render("html", True, {})
     'iframe'
@@ -50,12 +53,13 @@ def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
     'text'
     >>> _default_render("text", False, {"text": "png"})   # can't embed images: override ignored
     'text'
+    >>> _default_render("html", False, {"html": "png"})   # export disabled: image override ignored
+    'iframe'
     """
-    if fmt == "html":
-        return overrides.get(fmt) or "iframe"
-    if not image_capable:
-        return "text"
-    return overrides.get(fmt) or "png"
+    mode = overrides.get(fmt) or ("iframe" if fmt == "html" else "png")
+    if mode in ("png", "jpg") and not image_capable:
+        return "iframe" if fmt == "html" else "text"
+    return mode
 
 
 def _builder_inited(app):

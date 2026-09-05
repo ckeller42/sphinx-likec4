@@ -353,6 +353,13 @@ def test_export_images_false_disables_export_everywhere(tmp_path, fake_build, fa
     assert "LikeC4 view" in next(out2.glob("*.tex")).read_text()
 
 
+def test_export_images_false_overrides_html_png_config(tmp_path, fake_build, fake_images):
+    app, out = _app(tmp_path, confoverrides={"likec4_export_images": False,
+                                             "likec4_render": {"html": "png"}})
+    assert app.env.likec4_render_default == "iframe" and fake_images == []
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+
+
 def test_image_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_build, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("chromium: error while loading shared libraries")
