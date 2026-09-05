@@ -70,7 +70,7 @@ class LikeC4View(Directive):
 
     Renders per :data:`~sphinx.application.Sphinx.env`'s ``likec4_mode``, set by
     :func:`sphinx_likec4._builder_inited`: an iframe on ``"html"``, a placeholder
-    paragraph on ``"warn"`` (node/npx unavailable) or ``"non-html"`` builders.
+    paragraph on ``"warn"`` (node/npx unavailable), or plain text on ``"non-html"`` builders.
     """
 
     required_arguments = 1
