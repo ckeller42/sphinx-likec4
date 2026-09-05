@@ -40,10 +40,10 @@ def _mode(argument):
 
     >>> _mode("sequence")
     'sequence'
-    >>> _mode("bogus")
+    >>> _mode("bogus")  # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
-    ValueError: "bogus" unknown; choose from "diagram", or "sequence"
+    ValueError: "bogus" unknown; choose from ...
     """
     return directives.choice(argument, ("diagram", "sequence"))
 

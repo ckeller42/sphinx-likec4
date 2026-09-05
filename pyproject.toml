@@ -27,4 +27,7 @@ docs = ["furo", "myst-parser>=2"]
 packages = ["src/sphinx_likec4"]
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules"
+# --ignore-glob keeps the Sphinx test-root conf.py files (loaded by Sphinx from disk,
+# never imported) out of doctest collection — otherwise bare `pytest` errors on them.
+addopts = "--doctest-modules --ignore-glob=tests/roots/*"
+testpaths = ["src", "tests"]

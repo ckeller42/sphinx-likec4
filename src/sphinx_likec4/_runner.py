@@ -18,8 +18,10 @@ def _npx() -> str | None:
 
 
 def source_hash(source_dir: Path, version: str, build_args: list[str]) -> str:
-    """Hash ``source_dir``'s ``.c4``/``.likec4`` file paths + contents, plus ``version``
-    and ``build_args``, so any change to inputs or build config invalidates the cache.
+    """Digest of the LikeC4 sources plus ``version`` and ``build_args``.
+
+    Covers each ``.c4``/``.likec4`` file's relative path and contents, so any change
+    to inputs or build config invalidates the cache.
     """
     h = hashlib.sha256()
     h.update(version.encode())

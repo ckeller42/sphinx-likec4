@@ -8,10 +8,17 @@ permissions:
   contents: write
   pull-requests: write
 
+# Serialize merges so several CI runs completing together don't race each other
+# into a now-conflicting PR.
+concurrency:
+  group: dependabot-auto-merge
+  cancel-in-progress: false
+
 jobs:
   auto-merge:
-    # Fires only after CI already succeeded for this exact commit — no reliance on
-    # branch protection / repo auto-merge settings to make merging wait for green.
+    # Fires only after CI already succeeded for this exact commit — intentionally
+    # independent of the repo's "Allow auto-merge" toggle and of branch-protection
+    # required-checks, so it needs no repo settings to be correct.
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -29,21 +36,24 @@ jobs:
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-          author=$(gh pr view "$number" --repo "$REPO" --json author --jq '.author.login')
+          # `gh pr view --json author` reports bots as "app/dependabot"; the REST
+          # user login is the canonical "dependabot[bot]".
+          author=$(gh api "repos/$REPO/pulls/$number" --jq '.user.login')
           if [ "$author" != "dependabot[bot]" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Dependabot titles read "... bump <dep> from X... to Y..." — same leading
-          # version number means minor/patch (safe to auto-merge); a differing
-          # leading number is a major bump, left for manual review.
-          title=$(gh pr view "$number" --repo "$REPO" --json title --jq '.title')
-          from_major=$(echo "$title" | grep -oE 'from [0-9]+' | grep -oE '[0-9]+')
-          to_major=$(echo "$title" | grep -oE 'to [0-9]+' | grep -oE '[0-9]+')
-          if [ -z "$from_major" ] || [ -z "$to_major" ] || [ "$from_major" != "$to_major" ]; then
+          # Dependabot stamps each commit with a structured trailer per bumped
+          # dependency: "update-type: version-update:semver-{major,minor,patch}".
+          # Eligible iff at least one trailer exists and none is a major bump —
+          # covers grouped updates and SHA-pinned actions, which a title parse
+          # can't classify. `|| true` keeps a no-match grep from tripping bash -e.
+          types=$(gh pr view "$number" --repo "$REPO" --json commits --jq '.commits[].messageBody' \
+                  | grep -oE 'update-type: version-update:semver-[a-z]+' | sort -u || true)
+          if [ -z "$types" ] || echo "$types" | grep -q 'semver-major'; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping auto-merge for #$number — major bump (or unparsable title): $title"
+            echo "::notice::Skipping auto-merge for #$number — major bump or no update-type trailer: ${types:-<none>}"
             exit 0
           fi
 
@@ -54,4 +64,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-        run: gh pr merge "${{ steps.check.outputs.number }}" --repo "$REPO" --squash --delete-branch
+          NUMBER: ${{ steps.check.outputs.number }}
+          # Pin the merge to the commit CI actually validated. If Dependabot rebased
+          # the PR meanwhile, GitHub refuses (409) and the new head's own CI run
+          # re-triggers this workflow.
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
