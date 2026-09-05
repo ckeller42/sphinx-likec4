@@ -66,12 +66,18 @@ def _view_ids(data: object) -> set[str]:
     return ids
 
 
-def ensure_build(source_dir: Path, cache_dir: Path, version: str,
-                 build_args: list[str]) -> tuple[Path, set[str]]:
-    """Build the viewer into ``cache_dir/dist`` (skipped on hash match); return (dist, view ids)."""
+def _require_npx() -> str:
+    """Return the ``npx`` path, or raise :class:`LikeC4Missing` when node isn't installed."""
     npx = _npx()
     if npx is None:
         raise LikeC4Missing("npx not found on PATH — node >= 20 is required to build LikeC4 views")
+    return npx
+
+
+def ensure_build(source_dir: Path, cache_dir: Path, version: str,
+                 build_args: list[str]) -> tuple[Path, set[str]]:
+    """Build the viewer into ``cache_dir/dist`` (skipped on hash match); return (dist, view ids)."""
+    npx = _require_npx()
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     dist = cache_dir / "dist"
@@ -92,3 +98,54 @@ def ensure_build(source_dir: Path, cache_dir: Path, version: str,
     views_file.write_text(json.dumps(sorted(views)))
     stamp.write_text(digest)
     return dist, views
+
+
+def ensure_views(source_dir: Path, cache_dir: Path, version: str) -> set[str]:
+    """Return the model's view ids via ``likec4 export json`` (cached on the source hash).
+
+    For builders that need images but no viewer build (LaTeX, epub…); ``ensure_build``
+    keeps its own copy of this step because its stamp already covers it.
+    """
+    npx = _require_npx()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    stamp, views_file = cache_dir / "views.stamp", cache_dir / "views-only.json"
+    digest = source_hash(source_dir, version, ["json"])
+    if stamp.exists() and stamp.read_text() == digest and views_file.exists():
+        return set(json.loads(views_file.read_text()))
+    export = cache_dir / "model.json"
+    _run(npx, [f"likec4@{version}", "export", "json", "-o", str(export), str(source_dir)],
+         cwd=source_dir)
+    views = _view_ids(json.loads(export.read_text()))
+    views_file.write_text(json.dumps(sorted(views)))
+    stamp.write_text(digest)
+    return views
+
+
+def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str) -> Path:
+    """Export every view as ``<view-id>.<fmt>`` into ``cache_dir/images-<fmt>`` (cached).
+
+    ``fmt`` is ``"png"`` or ``"jpg"``. The export drives headless Chromium through
+    Playwright; if the first attempt fails for lack of a browser, install Chromium once
+    through likec4's *own* Playwright (so the browser revision matches) and retry. Any
+    other failure, or a second one, propagates as ``RuntimeError``.
+    """
+    npx = _require_npx()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out = cache_dir / f"images-{fmt}"
+    stamp = cache_dir / f"images-{fmt}.stamp"
+    digest = source_hash(source_dir, version, [fmt])
+    if stamp.exists() and stamp.read_text() == digest and out.is_dir():
+        return out
+    shutil.rmtree(out, ignore_errors=True)
+    cli = f"likec4@{version}"
+    export = [cli, "export", fmt, "--flat", "-o", str(out), str(source_dir)]
+    try:
+        _run(npx, export, cwd=source_dir)
+    except RuntimeError as e:
+        msg = str(e).lower()
+        if not any(k in msg for k in ("playwright", "browser", "executable")):
+            raise
+        _run(npx, ["--package", cli, "-c", "playwright install chromium"], cwd=source_dir)
+        _run(npx, export, cwd=source_dir)
+    stamp.write_text(digest)
+    return out

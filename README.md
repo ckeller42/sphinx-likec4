@@ -39,4 +39,8 @@ likec4_source_dir = "model"
 .. likec4-view:: cloud-to-amazon
 ```
 
+Non-HTML builders (LaTeX/PDF, epub) get the views as static PNGs automatically; `:render: png`
+does the same on an HTML page. See the [docs](https://ckeller42.github.io/sphinx-likec4/) —
+also as a [PDF](https://ckeller42.github.io/sphinx-likec4/sphinx-likec4.pdf).
+
 Docs: https://ckeller42.github.io/sphinx-likec4/ · License: MIT

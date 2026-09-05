@@ -37,7 +37,15 @@ jobs:
       - uses: actions/setup-python@v7
         with: { python-version: "3.13", cache: pip }
       - run: pip install -e .[docs]
+      - name: Install TeX Live (PDF)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends latexmk texlive-latex-recommended \
+            texlive-latex-extra texlive-fonts-recommended texlive-xetex fonts-freefont-otf
       - run: python -m sphinx -b html -W docs docs/_build/html
+      - name: Build PDF
+        run: python -m sphinx -M latexpdf docs docs/_build -W
+      - run: cp docs/_build/latex/sphinx-likec4.pdf docs/_build/html/
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with: { path: docs/_build/html }
