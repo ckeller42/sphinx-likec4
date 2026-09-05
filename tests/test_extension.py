@@ -344,11 +344,16 @@ def test_switching_builders_on_a_shared_doctreedir_rerenders(tmp_path, fake_buil
 
 
 def test_export_images_false_disables_export_everywhere(tmp_path, fake_build, fake_images):
-    app, out = _app(tmp_path, confoverrides={"likec4_export_images": False})
+    # two Sphinx apps in one test: isolate each in its own docutils_namespace() (Sphinx <8
+    # warns about re-registered node classes otherwise; see tests/conftest.py)
+    with docutils_namespace():
+        app, out = _app(tmp_path, confoverrides={"likec4_export_images": False})
     assert fake_images == [] and app.env.likec4_render_default == "iframe"
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
     (tmp_path / "l").mkdir()
-    app2, out2 = _app(tmp_path / "l", builder="latex", confoverrides={"likec4_export_images": False})
+    with docutils_namespace():
+        app2, out2 = _app(tmp_path / "l", builder="latex",
+                          confoverrides={"likec4_export_images": False})
     assert app2.env.likec4_mode == "non-html" and fake_images == []
     assert "LikeC4 view" in next(out2.glob("*.tex")).read_text()
 
@@ -364,13 +369,16 @@ def test_image_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_bu
     def boom(*a, **k):
         raise RuntimeError("chromium: error while loading shared libraries")
     monkeypatch.setattr(_runner, "ensure_images", boom)
-    app, out = _app(tmp_path, confoverrides={"suppress_warnings": ["likec4"]})
+    with docutils_namespace():                  # two apps in one test; see conftest.py
+        app, out = _app(tmp_path, confoverrides={"suppress_warnings": ["likec4"]})
     assert app.env.likec4_images == {}
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
     # -W without suppression must still fail the build: Sphinx <8.1 raises on the first
     # warning, Sphinx >=8.1 records it and exits non-zero
+    (tmp_path / "strict").mkdir()
     try:
-        strict_app, _ = _app(tmp_path / "strict")
+        with docutils_namespace():
+            strict_app, _ = _app(tmp_path / "strict")
     except SphinxError:
         pass
     else:
