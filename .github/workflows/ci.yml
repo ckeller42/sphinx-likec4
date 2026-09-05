@@ -24,7 +24,7 @@ jobs:
         with: { python-version: "${{ matrix.python }}" }
       - run: pip install -e .[test]
       - run: if [ -n "${{ matrix.sphinx }}" ]; then pip install "${{ matrix.sphinx }}"; fi
-      - run: python -m pytest tests/ -q
+      - run: python -m pytest src/ tests/ -q
       - name: Lint
         if: matrix.python == '3.13' && matrix.sphinx == ''
         run: python -m ruff check .

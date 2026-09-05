@@ -3,6 +3,6 @@
 set -e
 PY="${PYTHON:-.venv/bin/python}"
 "$PY" -m ruff check .
-"$PY" -m pytest tests/ -q
+"$PY" -m pytest src/ tests/ -q
 "$PY" -m sphinx -q -b html -W -E docs docs/_build/html
 echo "local gate: OK"

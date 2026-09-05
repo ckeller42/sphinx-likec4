@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 
 
 def _builder_inited(app):
+    """``builder-inited`` handler: validate config and build the LikeC4 viewer.
+
+    Sets ``app.env.likec4_mode`` to one of:
+
+    - ``"non-html"`` — non-HTML/epub builder; directives emit plain text.
+    - ``"warn"`` — node/npx unavailable and ``likec4_missing == "warn"``; directives
+      render placeholders.
+    - ``"html"`` — viewer built (or cache hit); ``app.env.likec4_views``/``likec4_dist``
+      are populated for the directives to consume.
+    """
     from . import _runner
     if app.config.likec4_missing not in ("error", "warn"):
         raise ConfigError(
@@ -55,6 +65,10 @@ def _builder_inited(app):
 
 
 def _build_finished(app, exc):
+    """``build-finished`` handler: copy the built viewer into ``<outdir>/_likec4``.
+
+    No-op if the build errored or the builder isn't HTML.
+    """
     if exc or app.builder.format != "html":
         return
     dist = getattr(app.env, "likec4_dist", None)
@@ -65,6 +79,7 @@ def _build_finished(app, exc):
 
 
 def setup(app):
+    """Sphinx extension entry point: register config values, directives, and hooks."""
     from ._directives import LikeC4Model, LikeC4View
     app.add_config_value("likec4_source_dir", None, "env")
     app.add_config_value("likec4_version", DEFAULT_LIKEC4_VERSION, "env")

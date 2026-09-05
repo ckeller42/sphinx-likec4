@@ -13,10 +13,16 @@ class LikeC4Missing(RuntimeError):
 
 
 def _npx() -> str | None:
+    """Return the path to ``npx`` on ``PATH``, or ``None`` if node isn't installed."""
     return shutil.which("npx")
 
 
 def source_hash(source_dir: Path, version: str, build_args: list[str]) -> str:
+    """Digest of the LikeC4 sources plus ``version`` and ``build_args``.
+
+    Covers each ``.c4``/``.likec4`` file's relative path and contents, so any change
+    to inputs or build config invalidates the cache.
+    """
     h = hashlib.sha256()
     h.update(version.encode())
     h.update("\0".join(build_args).encode())
@@ -28,6 +34,7 @@ def source_hash(source_dir: Path, version: str, build_args: list[str]) -> str:
 
 
 def _run(npx: str, args: list[str], cwd: Path) -> None:
+    """Run ``npx -y <args>`` in ``cwd``; raise ``RuntimeError`` with stdout/stderr on failure."""
     cmd = [npx, "-y", *args]
     res = subprocess.run(cmd, cwd=cwd, capture_output=True, check=False)  # checked manually below
     if res.returncode != 0:
@@ -39,7 +46,15 @@ def _run(npx: str, args: list[str], cwd: Path) -> None:
 
 
 def _view_ids(data: object) -> set[str]:
-    """Extract view ids from `likec4 export json` output (dict- or list-shaped)."""
+    """Extract view ids from `likec4 export json` output (dict- or list-shaped).
+
+    >>> sorted(_view_ids({"views": {"index": {}, "seqA": {}}}))
+    ['index', 'seqA']
+    >>> sorted(_view_ids([{"views": {"a": {}}}, {"views": {"b": {}}}]))
+    ['a', 'b']
+    >>> _view_ids({"nodes": {}})
+    set()
+    """
     ids: set[str] = set()
     if isinstance(data, dict):                 # single project: {"views": {<id>: ...}}
         views = data.get("views")
