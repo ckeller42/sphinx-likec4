@@ -9,10 +9,13 @@ permissions:
   pull-requests: write
 
 # Serialize merges so several CI runs completing together don't race each other
-# into a now-conflicting PR.
+# into a now-conflicting PR. `queue: max` keeps every pending run — the default
+# (`single`) keeps only one and cancels older pending runs, which would silently
+# drop merge attempts when several Dependabot PRs go green at once.
 concurrency:
   group: dependabot-auto-merge
   cancel-in-progress: false
+  queue: max
 
 jobs:
   auto-merge:
