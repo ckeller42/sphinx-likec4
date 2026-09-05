@@ -47,5 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { pages: write, id-token: write }
     environment: { name: github-pages }
+    # Pages rejects a deployment while another is in progress (HTTP 400); back-to-back
+    # merges to main otherwise race and fail. Queue, never cancel a deploy mid-flight.
+    concurrency: { group: pages, cancel-in-progress: false }
     steps:
       - uses: actions/deploy-pages@v5
