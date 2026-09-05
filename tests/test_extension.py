@@ -247,3 +247,73 @@ def test_likec4_render_epub_key_overrides_epub(tmp_path, fake_build, fake_images
     assert app.env.likec4_render_default == "jpg"
     assert sorted(fake_images) == ["jpg", "png"]
     assert fake_build == []                                 # epub never builds the iframe viewer
+
+
+def _src(tmp_path, name, index_rst):
+    src = tmp_path / name
+    shutil.copytree(ROOT, src)
+    (src / "index.rst").write_text(index_rst)
+    (src / "sub" / "page.rst").unlink()
+    return src
+
+
+def test_render_png_on_html_emits_img_and_copies_file(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :width: 50%\n")
+    out = _build(tmp_path, srcdir=src)
+    html = (out / "index.html").read_text()
+    assert "<iframe" not in html
+    assert 'src="_images/index.png"' in html
+    assert 'alt="LikeC4 view index"' in html
+    assert "width: 50%" in html
+    assert (out / "_images" / "index.png").exists()
+
+
+def test_alt_defaults_to_title(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :title: Cloud\n")
+    assert 'alt="Cloud"' in (_build(tmp_path, srcdir=src) / "index.html").read_text()
+
+
+def test_latex_embeds_png_by_default(tmp_path, fake_build):
+    _, out = _app(tmp_path, builder="latex")
+    tex = next(out.glob("*.tex")).read_text()
+    assert "\\sphinxincludegraphics" in tex and "{index}.png" in tex   # Sphinx emits {{index}.png}
+    assert (out / "index.png").exists()
+    assert "LikeC4 model (interactive" in tex                # likec4-model stays plain text off HTML
+
+
+def test_render_iframe_falls_back_to_png_on_latex(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: iframe\n")
+    _, out = _app(tmp_path, srcdir=src, builder="latex")
+    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
+
+
+def test_render_png_on_text_builder_falls_back_to_text(tmp_path):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    _, out = _app(tmp_path, srcdir=src, builder="text")
+    assert "LikeC4 view 'index'" in (out / "index.txt").read_text()
+
+
+def test_likec4_render_html_png_turns_every_view_static(tmp_path, fake_build):
+    out = _build(tmp_path, confoverrides={"likec4_render": {"html": "png"}})
+    html = (out / "index.html").read_text()
+    assert '<iframe class="likec4-view"' not in html
+    assert html.count('_images/') >= 2                       # index + seqA
+    assert '<iframe class="likec4-model"' in html            # model embed unaffected on HTML
+
+
+def test_render_jpg_without_config_is_an_error(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: jpg\n")
+    with pytest.raises(SphinxError, match="likec4_render"):
+        _build(tmp_path, srcdir=src)
+
+
+def test_render_jpg_with_config_works(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: jpg\n")
+    out = _build(tmp_path, srcdir=src, confoverrides={"likec4_render": {"latex": "jpg"}})
+    assert 'src="_images/index.jpg"' in (out / "index.html").read_text()
+
+
+def test_unknown_view_id_fails_latex_build_too(tmp_path, fake_build):
+    src = _src(tmp_path, "s", "Bad\n===\n\n.. likec4-view:: nope\n")
+    with pytest.raises(SphinxError):
+        _app(tmp_path, srcdir=src, builder="latex")

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import html
+import os
 import re
+from pathlib import Path
 from typing import ClassVar
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
+from docutils.parsers.rst.directives.images import Image
 from sphinx.errors import ExtensionError
 
 _HEIGHT_RE = re.compile(r"^[0-9]+(px|em|rem|vh|%)$")
@@ -33,6 +36,13 @@ def _placeholder(text: str) -> nodes.raw:
     """
     return nodes.raw("", f'<p class="likec4-placeholder"><em>{html.escape(text, quote=True)}</em></p>',
                       format="html")
+
+
+def _text(text: str) -> nodes.paragraph:
+    """Plain-text stand-in for builders that can't embed the viewer or an image."""
+    para = nodes.paragraph()
+    para += nodes.Text(text)
+    return para
 
 
 def _mode(argument):
@@ -119,24 +129,26 @@ def _resolve_render(requested: str | None, default: str, is_html: bool, images: 
 
 
 class LikeC4View(Directive):
-    """``.. likec4-view:: <view-id>`` — embed one LikeC4 view as an iframe.
+    """``.. likec4-view:: <view-id>`` — embed one LikeC4 view.
 
-    Renders per :data:`~sphinx.application.Sphinx.env`'s ``likec4_mode``, set by
-    :func:`sphinx_likec4._builder_inited`: an iframe on ``"html"``, a placeholder
-    paragraph on ``"warn"`` (node/npx unavailable), or plain text on ``"non-html"`` builders.
+    Renders per :func:`sphinx_likec4._builder_inited`'s ``likec4_mode`` and the resolved
+    render mode (see :func:`_resolve_render`): an iframe, a static PNG/JPG image, or plain
+    text. ``"warn"`` mode (node/npx unavailable) renders a placeholder.
     """
 
     required_arguments = 1
-    option_spec: ClassVar[dict] = {"height": _height, "title": directives.unchanged, "mode": _mode}
+    option_spec: ClassVar[dict] = {
+        "height": _height, "title": directives.unchanged, "mode": _mode, "render": _render,
+        # image-mode passthroughs: same names and validators as the docutils image directive
+        **{k: Image.option_spec[k] for k in ("width", "alt", "align", "scale")},
+    }
 
     def run(self):
         env = self.state.document.settings.env
         view = self.arguments[0]
         mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
-            para = nodes.paragraph()
-            para += nodes.Text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")
-            return [para]
+            return [_text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")]
         if mode == "warn":                                  # build unavailable
             return [_placeholder(f"LikeC4 view “{view}” (viewer not built — node/npx unavailable)")]
         for f in getattr(env, "likec4_sources", ()):
@@ -149,8 +161,15 @@ class LikeC4View(Directive):
             raise ExtensionError(
                 f"likec4-view: unknown view id {view!r} (known: {', '.join(sorted(views))})"
             )
+        render = _resolve_render(self.options.get("render"), env.likec4_render_default,
+                                 env.likec4_format == "html", env.likec4_images)
+        title = self.options.get("title", f"LikeC4 view {view}")
+        if render == "text":
+            return [_text(f"LikeC4 view {view!r} (interactive — see the HTML docs)")]
+        if render in ("png", "jpg"):
+            return [self._image(env, view, render, title)]
         height = self.options.get("height", "460px")
-        title = html.escape(self.options.get("title", f"LikeC4 view {view}"), quote=True)
+        title = html.escape(title, quote=True)
         src = _rel(env.docname) + f"_likec4/#/view/{html.escape(view, quote=True)}/"
         dyn_mode = self.options.get("mode")
         if dyn_mode:                   # the viewer's ?dynamic= search param lives inside the hash
@@ -161,6 +180,20 @@ class LikeC4View(Directive):
             f'border-radius:8px;"></iframe>'
         )
         return [nodes.raw("", iframe, format="html")]
+
+    def _image(self, env, view: str, fmt: str, title: str) -> nodes.image:
+        """A standard image node pointing into the export cache; Sphinx copies/embeds it per builder.
+
+        The URI is relative to this document so Sphinx's image collector resolves it —
+        relative paths may escape ``srcdir``.
+        """
+        # ponytail: :mode: sequence is ignored here — --seq is global to an export run; add a
+        # filtered --seq pass into images-<fmt>/seq when someone needs sequence PNGs
+        file = Path(env.likec4_images[fmt]) / f"{view}.{fmt}"
+        uri = os.path.relpath(file, os.path.dirname(env.doc2path(env.docname)))
+        opts = {k: v for k, v in self.options.items() if k in ("width", "height", "alt", "align", "scale")}
+        opts.setdefault("alt", title)
+        return nodes.image(uri=uri, **opts)
 
 
 class LikeC4Model(Directive):
@@ -176,11 +209,11 @@ class LikeC4Model(Directive):
         env = self.state.document.settings.env
         mode = getattr(env, "likec4_mode", "ready")
         if mode == "non-html":
-            para = nodes.paragraph()
-            para += nodes.Text("LikeC4 model (interactive — see the HTML docs)")
-            return [para]
+            return [_text("LikeC4 model (interactive — see the HTML docs)")]
         if mode == "warn":
             return [_placeholder("LikeC4 model (viewer not built — node/npx unavailable)")]
+        if env.likec4_format != "html":                     # the gallery has no single-image form
+            return [_text("LikeC4 model (interactive — see the HTML docs)")]
         for f in getattr(env, "likec4_sources", ()):
             env.note_dependency(f)
         src = _rel(env.docname) + "_likec4/"
