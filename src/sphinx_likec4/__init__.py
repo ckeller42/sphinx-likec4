@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from types import SimpleNamespace
 
 from sphinx.errors import ConfigError
 from sphinx.util import logging
@@ -13,23 +12,42 @@ DEFAULT_LIKEC4_VERSION = "1.59.2"
 logger = logging.getLogger(__name__)
 
 
-def _default_render(builder, overrides: dict) -> str:
-    """Render mode a builder gets when a directive doesn't say: ``likec4_render`` first, else
-    ``iframe`` for HTML, ``png`` for any other builder that can embed images, ``text`` otherwise.
+def _format_key(builder) -> str:
+    """Output-format key for ``likec4_render`` and the built-in defaults.
+
+    Sphinx's epub builder subclasses the HTML builder and reports ``format == "html"``,
+    but it can't host the iframe viewer — key it as ``"epub"``.
 
     >>> from types import SimpleNamespace as B
-    >>> _default_render(B(format="html", supported_image_types=["image/png"]), {})
+    >>> _format_key(B(name="html", format="html"))
+    'html'
+    >>> _format_key(B(name="epub", format="html"))
+    'epub'
+    >>> _format_key(B(name="latex", format="latex"))
+    'latex'
+    """
+    return "epub" if builder.name.startswith("epub") else builder.format
+
+
+def _default_render(fmt: str, image_capable: bool, overrides: dict) -> str:
+    """Render mode a builder gets when a directive doesn't say: ``likec4_render[fmt]`` first,
+    else ``iframe`` for HTML, ``png`` for any other builder that can embed images, ``text``
+    when it can't (text, man, linkcheck…).
+
+    >>> _default_render("html", True, {})
     'iframe'
-    >>> _default_render(B(format="latex", supported_image_types=["application/pdf", "image/png"]), {})
+    >>> _default_render("latex", True, {})
     'png'
-    >>> _default_render(B(format="latex", supported_image_types=["image/png"]), {"latex": "jpg"})
+    >>> _default_render("epub", True, {})
+    'png'
+    >>> _default_render("latex", True, {"latex": "jpg"})
     'jpg'
-    >>> _default_render(B(format="text", supported_image_types=[]), {"text": "png"})   # can't embed
+    >>> _default_render("text", False, {"text": "png"})   # can't embed images: override ignored
     'text'
     """
-    if not builder.supported_image_types:
+    if not image_capable:
         return "text"
-    return overrides.get(builder.format) or ("iframe" if builder.format == "html" else "png")
+    return overrides.get(fmt) or ("iframe" if fmt == "html" else "png")
 
 
 def _builder_inited(app):
@@ -55,14 +73,9 @@ def _builder_inited(app):
     if bad:
         raise ConfigError(f"sphinx-likec4: likec4_render values must be one of {_RENDER_MODES}, got {bad!r}")
     env = app.env
-    # epub subclasses the HTML builder and reports format == "html" like real HTML does, but it
-    # can't embed our iframe viewer and gets no viewer build — treat it as its own format here.
-    is_epub = app.builder.name.startswith("epub")
-    builder_for_default = (
-        SimpleNamespace(format="epub", supported_image_types=app.builder.supported_image_types)
-        if is_epub else app.builder
-    )
-    env.likec4_render_default = _default_render(builder_for_default, cfg.likec4_render)
+    env.likec4_format = _format_key(app.builder)
+    env.likec4_render_default = _default_render(
+        env.likec4_format, bool(app.builder.supported_image_types), cfg.likec4_render)
     env.likec4_images = {}
     env.likec4_dist = None
     if env.likec4_render_default == "text":
@@ -85,7 +98,7 @@ def _builder_inited(app):
     # file); jpg only when this or any other format's config asks for it.
     formats = {"png"} | {v for v in (env.likec4_render_default, *cfg.likec4_render.values()) if v == "jpg"}
     try:
-        if app.builder.format == "html" and not is_epub:
+        if env.likec4_format == "html":
             dist, views = _runner.ensure_build(
                 source_dir, cache_dir, cfg.likec4_version, list(cfg.likec4_build_args))
             env.likec4_dist = str(dist)

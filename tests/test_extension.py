@@ -193,6 +193,7 @@ def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
 def test_html_default_is_iframe_and_still_exports_png(tmp_path, fake_build, fake_images):
     app, _ = _app(tmp_path)
     assert app.env.likec4_mode == "ready"
+    assert app.env.likec4_format == "html"
     assert app.env.likec4_render_default == "iframe"
     assert set(app.env.likec4_images) == {"png"} and fake_images == ["png"]
     assert app.env.likec4_dist is not None
@@ -237,4 +238,12 @@ def test_epub_is_image_capable(tmp_path, fake_build, fake_images):
     # strict=False: Sphinx's epub builder warns about its own unset epub_* config values,
     # which has nothing to do with this extension
     app, _ = _app(tmp_path, builder="epub", strict=False)
+    assert app.env.likec4_format == "epub"
     assert app.env.likec4_render_default == "png" and fake_images == ["png"]
+
+
+def test_likec4_render_epub_key_overrides_epub(tmp_path, fake_build, fake_images):
+    app, _ = _app(tmp_path, builder="epub", strict=False, confoverrides={"likec4_render": {"epub": "jpg"}})
+    assert app.env.likec4_render_default == "jpg"
+    assert sorted(fake_images) == ["jpg", "png"]
+    assert fake_build == []                                 # epub never builds the iframe viewer
