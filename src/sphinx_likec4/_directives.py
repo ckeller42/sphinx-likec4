@@ -65,6 +65,59 @@ def _height(argument):
     return argument
 
 
+_RENDER_MODES = ("iframe", "png", "jpg", "text")
+
+
+def _render(argument):
+    """Docutils option validator for ``:render:``.
+
+    >>> _render("png")
+    'png'
+    >>> _render("svg")  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+        ...
+    ValueError: "svg" unknown; choose from ...
+    """
+    return directives.choice(argument, _RENDER_MODES)
+
+
+def _resolve_render(requested: str | None, default: str, is_html: bool, images: dict) -> str:
+    """Pick one directive's render mode. ``:render:`` is a preference, not a demand.
+
+    ``default`` is the builder's resolved default (see ``sphinx_likec4._default_render``);
+    ``images`` maps exported formats to their directories.
+
+    >>> _resolve_render(None, "iframe", True, {"png": "/c"})
+    'iframe'
+    >>> _resolve_render("png", "iframe", True, {"png": "/c"})      # static image on an HTML page
+    'png'
+    >>> _resolve_render("iframe", "png", False, {"png": "/c"})     # LaTeX can't embed an iframe
+    'png'
+    >>> _resolve_render("png", "text", False, {})                  # text builder has no images
+    'text'
+    >>> _resolve_render("text", "iframe", True, {"png": "/c"})
+    'text'
+    >>> _resolve_render("jpg", "png", False, {"png": "/c"})  # doctest: +IGNORE_EXCEPTION_DETAIL
+    Traceback (most recent call last):
+        ...
+    ExtensionError: likec4-view: ':render: jpg' needs "jpg" in likec4_render
+    """
+    if not requested:
+        return default
+    if requested == "text":
+        return "text"
+    if requested == "iframe":
+        return "iframe" if is_html else default
+    if not images:
+        return default
+    if requested not in images:
+        raise ExtensionError(
+            f"likec4-view: ':render: {requested}' needs \"{requested}\" in likec4_render "
+            f"(only {', '.join(sorted(images))} was exported)"
+        )
+    return requested
+
+
 class LikeC4View(Directive):
     """``.. likec4-view:: <view-id>`` — embed one LikeC4 view as an iframe.
 
