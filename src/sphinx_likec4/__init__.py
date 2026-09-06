@@ -134,11 +134,18 @@ def _builder_inited(app):
             # remember it in env.likec4_needed; here, re-export the previous build's set in
             # one run per (format, layout) so doctrees that won't be re-read still find
             # their files after a source change wiped the dirs.
+            # If the render target changed since the pickled env (builder switch, images
+            # toggled), every document is re-read and exports on demand — a batched pass
+            # now would render files the re-read immediately abandons (-M latexpdf followed
+            # by -M html would start Chromium for nothing).
+            expected_key = (env.likec4_format, env.likec4_render_default, image_capable)
+            rerender_expected = getattr(env, "likec4_render_key", expected_key) != expected_key
             needed: dict[tuple[str, bool], set[str]] = {}
-            for entries in getattr(env, "likec4_needed", {}).values():
-                for view, f, seq in entries:
-                    if f in formats and (not seq or dynamic):
-                        needed.setdefault((f, seq), set()).add(view)
+            if not rerender_expected:
+                for entries in getattr(env, "likec4_needed", {}).values():
+                    for view, f, seq in entries:
+                        if f in formats and (not seq or view in dynamic):
+                            needed.setdefault((f, seq), set()).add(view)
             try:
                 for (f, seq), ids in sorted(needed.items()):
                     _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, ids, seq=seq)

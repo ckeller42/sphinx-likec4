@@ -158,8 +158,8 @@ def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
     digest = source_hash(source_dir, version, [fmt, "seq"] if seq else [fmt])
     if not (stamp.exists() and stamp.read_text() == digest):
         shutil.rmtree(out, ignore_errors=True)               # stale renders must not survive
-        out.mkdir(parents=True)
         stamp.write_text(digest)
+    out.mkdir(parents=True, exist_ok=True)                   # also recreates a hand-deleted dir on a stamp hit
     missing = sorted(v for v in set(views) if not (out / f"{v}.{fmt}").exists())
     if not missing:
         return out

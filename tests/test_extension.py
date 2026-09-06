@@ -562,9 +562,50 @@ def test_no_dynamic_views_means_no_seq_pass(tmp_path, fake_build, fake_images):
     assert app.env.likec4_dynamic_views == set()
 
 
+def test_batched_pass_drops_seq_entries_for_views_no_longer_dynamic(tmp_path, fake_build, fake_images, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n")
+    with docutils_namespace():
+        _app(tmp_path, srcdir=src)
+    assert fake_images == [("png", ("seqA",), True)]
+    fake_images.clear()
+    monkeypatch.setattr(_runner, "ensure_views",               # seqA is not dynamic any more …
+                        lambda source_dir, cache_dir, version: ({"index", "seqA"}, set()))
+    (src / "index.rst").write_text("S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n\n.. note:: touched\n")
+    with docutils_namespace():
+        _app(tmp_path, srcdir=src)
+    assert all(not seq for _, _, seq in fake_images)           # … so no --seq run is batched or requested
+
+
+def test_builder_switch_skips_the_batched_pass(tmp_path, fake_build, fake_images):
+    dt = tmp_path / "dt"
+    with docutils_namespace():                                 # latex: every view exported on demand
+        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "latex"), str(dt), "latex", warningiserror=True).build()
+    assert fake_images == [("png", ("index",), False), ("png", ("seqA",), False)]
+    fake_images.clear()
+    with docutils_namespace():                                 # html on the same doctree dir
+        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "html"), str(dt), "html", warningiserror=True).build()
+    assert fake_images == []                                    # re-read to iframes; nothing exported
+
+
 def test_seq_pass_runs_for_latex_and_is_read_by_mode_sequence(tmp_path, fake_build, fake_images, monkeypatch):
     _with_dynamic_seqa(monkeypatch)
     src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :mode: sequence\n")
     app, out = _app(tmp_path, srcdir=src, builder="latex")
     assert fake_images == [("png", ("seqA",), True)] and app.env.likec4_dynamic_views == {"seqA"}
     assert (out / "seqA.png").read_bytes() == _PNG_SEQ
+
+
+def test_env_handlers_purge_and_merge():
+    from types import SimpleNamespace
+
+    from sphinx_likec4 import _env_merge_info, _env_purge_doc
+    env = SimpleNamespace(likec4_needed={"a": {("x", "png", False)}, "b": {("y", "png", False)}})
+    _env_purge_doc(None, env, "a")
+    _env_purge_doc(None, env, "missing")                       # tolerated
+    assert env.likec4_needed == {"b": {("y", "png", False)}}
+    other = SimpleNamespace(likec4_needed={"a": {("z", "jpg", True)}, "c": {("w", "png", False)}})
+    _env_merge_info(None, env, ["a", "c", "d"], other)          # only the docnames the worker read
+    assert env.likec4_needed == {"a": {("z", "jpg", True)}, "b": {("y", "png", False)}, "c": {("w", "png", False)}}
+    _env_merge_info(None, env, ["b"], SimpleNamespace())        # a worker env without the attribute
+    assert "b" in env.likec4_needed

@@ -154,8 +154,9 @@ riskiest part of the extension, for a gain only large models would notice).
   runs on `doctree-read`, after a document's directives, so a lazy per-directive export would
   work only for serial reads.
 - Builder switches on a shared doctree dir re-read all documents via `env-get-outdated`, keyed on
-  `(format, default render)` — otherwise `-M html` followed by `-M latexpdf` reuses cached HTML
-  iframe nodes and drops them silently from the LaTeX output.
+  `(format, default render, images available)` — see *Lazy export* below — otherwise `-M html`
+  followed by `-M latexpdf` reuses cached HTML iframe nodes and drops them silently from the LaTeX
+  output.
 - `warn` mode off HTML renders plain text instead of an invisible raw-HTML placeholder.
 - `likec4_export_images` opts out of the image export entirely.
 - An image-export `RuntimeError` is a warning on iframe-default builders (the build keeps

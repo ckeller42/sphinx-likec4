@@ -179,6 +179,18 @@ def test_ensure_images_reraises_non_playwright_failures(tmp_path, monkeypatch):
     assert len(calls) == 1                                  # no install attempt, no retry
 
 
+def test_ensure_images_recreates_a_deleted_dir_on_a_stamp_hit(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
+    import shutil as _sh
+    _sh.rmtree(out)                                         # user cleaned the renders by hand
+    assert _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"]) == out
+    assert (out / "index.png").exists() and len(calls) == 2
+
+
 def test_ensure_images_and_views_raise_when_npx_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner, "_npx", lambda: None)
     # NOTE: _model(tmp_path) creates tmp_path/"model" with plain mkdir() (no exist_ok), so it
