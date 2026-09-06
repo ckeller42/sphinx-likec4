@@ -42,3 +42,22 @@ def test_real_likec4_latex_embeds_png(tmp_path):
     app.build()
     assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
     assert (out / "index.png").stat().st_size > 1000
+
+
+def test_real_parallel_read_exports_per_worker(tmp_path):
+    src = tmp_path / "par"
+    shutil.copytree(ROOT, src)
+    (src / "model" / "a.c4").write_text(
+        "specification { element system }\n"
+        "model { a = system 'A'\n        b = system 'B' }\n"
+        "views { view index { include * }\n        view other { include b } }\n")
+    (src / "index.rst").write_text(
+        "P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. toctree::\n\n   sub/page\n")
+    (src / "sub" / "page.rst").write_text("S\n=\n\n.. likec4-view:: other\n   :render: png\n")
+    out = tmp_path / "out"
+    app = Sphinx(str(src), str(src), str(out), str(tmp_path / "dt"), "html",
+                 warningiserror=True, parallel=2)
+    app.build()
+    assert (out / "_images" / "index.png").stat().st_size > 1000
+    assert (out / "_images" / "other.png").stat().st_size > 1000
+    assert set(app.env.likec4_needed) == {"index", "sub/page"}     # merged from the workers

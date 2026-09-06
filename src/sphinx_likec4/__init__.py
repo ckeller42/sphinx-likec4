@@ -94,19 +94,16 @@ def _builder_inited(app):
     env.likec4_format = _format_key(app.builder)
     image_capable = bool(app.builder.supported_image_types) and cfg.likec4_export_images
     env.likec4_render_default = _default_render(env.likec4_format, image_capable, cfg.likec4_render)
-    # Doctrees are cached per document, not per builder, and the directives bake
-    # builder-specific nodes into them: switching builders on a shared doctree dir
-    # must re-read everything (see _env_get_outdated).
-    key = (env.likec4_format, env.likec4_render_default)
-    env.likec4_rerender = getattr(env, "likec4_render_key", key) != key
-    env.likec4_render_key = key
     env.likec4_images = {}
     env.likec4_images_seq = {}
     env.likec4_dynamic_views = set()
     env.likec4_dist = None
+    if not hasattr(env, "likec4_needed"):
+        env.likec4_needed = {}                       # docname -> {(view, fmt, seq)}; survives via the env pickle
     if env.likec4_render_default == "text":
         env.likec4_mode = "non-html"
         env.likec4_views = set()
+        _set_render_key(env)
         return
     src = cfg.likec4_source_dir
     if not src:
@@ -114,6 +111,7 @@ def _builder_inited(app):
     source_dir = Path(app.confdir) / src
     if not source_dir.is_dir():
         raise ConfigError(f"sphinx-likec4: likec4_source_dir {source_dir} does not exist")
+    env.likec4_source_dir = str(source_dir)
     # directives note_dependency() on these so a rename/edit invalidates cached
     # doctrees on incremental builds (otherwise a stale doctree hides an id change)
     env.likec4_sources = [
@@ -128,33 +126,45 @@ def _builder_inited(app):
         if env.likec4_format == "html":
             env.likec4_dist = str(_runner.ensure_build(
                 source_dir, cache_dir, cfg.likec4_version, list(cfg.likec4_build_args)))
-        # ponytail: exports png even if no directive asks; gate behind a flag if the Playwright time hurts
         if image_capable:
-            def export(seq_views=()):
-                return {f: str(_runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f,
-                                                     seq_views=seq_views))
-                        for f in sorted(formats)}
-
-            def failed(what, e):
-                if env.likec4_render_default in ("png", "jpg"):
-                    raise e
-                # this builder renders iframes by default — a browser problem must not kill it
-                logger.warning("sphinx-likec4: %s export failed; affected :render: png/jpg fall "
-                               "back — %s", what, e, type="likec4", subtype="images")
-                return {}
-
+            env.likec4_images = {f: str(cache_dir / f"images-{f}") for f in sorted(formats)}
+            env.likec4_images_seq = ({f: str(cache_dir / f"images-{f}-seq") for f in sorted(formats)}
+                                     if dynamic else {})
+            # Validate (and wipe/restamp when the sources changed) every image dir here, in
+            # the main process before any read worker forks: two workers seeing a stale stamp
+            # at once could wipe files one of them had just exported. No views → no CLI run.
+            for f in sorted(formats):
+                _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, [])
+                if dynamic:
+                    _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, [], seq=True)
+            # Lazy export: the directives export what they embed (LikeC4View._image) and
+            # remember it in env.likec4_needed; here, re-export the previous build's set in
+            # one run per (format, layout) so doctrees that won't be re-read still find
+            # their files after a source change wiped the dirs.
+            # If the render target changed since the pickled env (builder switch, images
+            # toggled), every document is re-read and exports on demand — a batched pass
+            # now would render files the re-read immediately abandons (-M latexpdf followed
+            # by -M html would start Chromium for nothing).
+            expected_key = (env.likec4_format, env.likec4_render_default, image_capable)
+            rerender_expected = getattr(env, "likec4_render_key", expected_key) != expected_key
+            needed: dict[tuple[str, bool], set[str]] = {}
+            if not rerender_expected:
+                for entries in getattr(env, "likec4_needed", {}).values():
+                    for view, f, seq in entries:
+                        if f in formats and (not seq or view in dynamic):
+                            needed.setdefault((f, seq), set()).add(view)
             try:
-                env.likec4_images = export()
+                for (f, seq), ids in sorted(needed.items()):
+                    _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, ids, seq=seq)
             except RuntimeError as e:
-                env.likec4_images = failed("image", e)
-            # dynamic views once more in sequence layout, for ":mode: sequence" — a separate
-            # pass because the CLI's --seq applies to the whole export; its failure leaves the
-            # normal images usable
-            if dynamic and env.likec4_images:
-                try:
-                    env.likec4_images_seq = export(seq_views=dynamic)
-                except RuntimeError as e:
-                    env.likec4_images_seq = failed("sequence image", e)
+                if env.likec4_render_default in ("png", "jpg"):
+                    raise
+                # this builder renders iframes by default — a browser problem must not kill it
+                logger.warning("sphinx-likec4: image export failed; :render: png/jpg fall back "
+                               "to %s — %s", env.likec4_render_default, e,
+                               type="likec4", subtype="images")
+                env.likec4_images = {}
+                env.likec4_images_seq = {}
     except _runner.LikeC4Missing as e:
         if cfg.likec4_missing == "warn":
             logger.warning("sphinx-likec4: %s — views render as placeholders", e,
@@ -164,11 +174,13 @@ def _builder_inited(app):
             env.likec4_dist = None
             env.likec4_images = {}
             env.likec4_images_seq = {}
+            _set_render_key(env)
             return
         raise ConfigError(f"sphinx-likec4: {e} (set likec4_missing='warn' to build without it)")
     env.likec4_mode = "ready"
     env.likec4_views = views
     env.likec4_dynamic_views = dynamic
+    _set_render_key(env)
 
 
 def _build_finished(app, exc):
@@ -185,6 +197,17 @@ def _build_finished(app, exc):
         shutil.copytree(dist, target, dirs_exist_ok=True)
 
 
+def _set_render_key(env) -> None:
+    """Remember what this build renders; a change since the pickled env re-reads every document.
+
+    Availability of images is part of it: a build that fell back to iframes/placeholders
+    (export failed, npx missing) must not leave those cached once images are back.
+    """
+    key = (env.likec4_format, env.likec4_render_default, bool(env.likec4_images))
+    env.likec4_rerender = getattr(env, "likec4_render_key", key) != key
+    env.likec4_render_key = key
+
+
 def _env_get_outdated(app, env, added, changed, removed):
     """``env-get-outdated`` handler: re-read every document when the render target changed.
 
@@ -192,6 +215,17 @@ def _env_get_outdated(app, env, added, changed, removed):
     would be handed the cached HTML iframe nodes and drop them silently.
     """
     return set(env.found_docs) if getattr(env, "likec4_rerender", False) else set()
+
+
+def _env_purge_doc(app, env, docname):
+    """``env-purge-doc``: forget what a removed/re-read document embedded."""
+    getattr(env, "likec4_needed", {}).pop(docname, None)
+
+
+def _env_merge_info(app, env, docnames, other):
+    """``env-merge-info``: fold a parallel read worker's embeds into the main env."""
+    theirs = getattr(other, "likec4_needed", {})
+    env.likec4_needed.update({d: theirs[d] for d in docnames if d in theirs})
 
 
 def setup(app):
@@ -207,5 +241,7 @@ def setup(app):
     app.add_directive("likec4-model", LikeC4Model)
     app.connect("builder-inited", _builder_inited)
     app.connect("env-get-outdated", _env_get_outdated)
+    app.connect("env-purge-doc", _env_purge_doc)
+    app.connect("env-merge-info", _env_merge_info)
     app.connect("build-finished", _build_finished)
     return {"version": __version__, "parallel_read_safe": True, "parallel_write_safe": True}

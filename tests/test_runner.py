@@ -93,43 +93,58 @@ def test_ensure_views_runs_export_json_once_then_caches(tmp_path, monkeypatch):
     assert len(calls) == 1                                  # cache hit
 
 
-def test_ensure_images_seq_pass_exports_only_dynamic_views(tmp_path, monkeypatch):
+def test_ensure_images_exports_only_missing_views_additively(tmp_path, monkeypatch):
     src = _model(tmp_path)
     calls = []
     monkeypatch.setattr(_runner, "_npx", lambda: "npx")
     monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
 
-    plain = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
-    seq = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", seq_views={"seqA"})
-    assert seq == tmp_path / "c" / "images-png-seq" and seq != plain
-    cmd = calls[1]
-    assert "--seq" in cmd and cmd[cmd.index("-f") + 1] == "seqA" and cmd.count("-f") == 1
-    assert (seq / "seqA.png").read_bytes() == b"seq" and not (seq / "index.png").exists()
-    assert (plain / "seqA.png").read_bytes() == b"img"      # the plain pass is untouched
-
-    assert _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", seq_views=["seqA"]) == seq
-    assert len(calls) == 2                                  # cache hit, independent of the plain stamp
-
-
-def test_ensure_images_exports_flat_then_caches(tmp_path, monkeypatch):
-    src = _model(tmp_path)
-    calls = []
-    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
-    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
-
-    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
-    assert out == tmp_path / "c" / "images-png"
-    assert (out / "index.png").exists()
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
+    assert out == tmp_path / "c" / "images-png" and (out / "index.png").exists()
     cmd = calls[0]
     assert cmd[:2] == ["npx", "-y"] and "likec4@1.59.2" in cmd
-    assert cmd[cmd.index("export") + 1] == "png" and "--flat" in cmd
+    assert cmd[cmd.index("export") + 1] == "png" and "--flat" in cmd and "--seq" not in cmd
+    assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-f"] == ["index"]
     assert cmd[cmd.index("-o") + 1] == str(out) and cmd[-1] == str(src)
 
-    assert _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png") == out
-    assert len(calls) == 1                                  # cache hit
+    _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index", "seqA"])
+    assert len(calls) == 2                                  # one more run, for the missing view only
+    assert [calls[1][i + 1] for i, a in enumerate(calls[1]) if a == "-f"] == ["seqA"]
+    assert (out / "index.png").exists() and (out / "seqA.png").exists()
 
-    jpg = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "jpg")
-    assert jpg == tmp_path / "c" / "images-jpg" and len(calls) == 2   # separate cache per format
+    _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["seqA", "index"])
+    assert len(calls) == 2                                  # nothing missing: no CLI call
+
+    jpg = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "jpg", ["index"])
+    assert jpg == tmp_path / "c" / "images-jpg" and len(calls) == 3   # separate dir per format
+
+
+def test_ensure_images_wipes_the_dir_when_sources_change(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index", "seqA"])
+    (out / "stale.png").write_bytes(b"old")                  # something the CLI would not recreate
+
+    (src / "a.c4").write_text("specification { element system }\n// changed")
+    _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
+    assert not (out / "stale.png").exists() and not (out / "seqA.png").exists()   # wiped
+    assert (out / "index.png").exists() and len(calls) == 2  # re-exported what was asked for
+
+
+def test_ensure_images_seq_uses_its_own_dir_and_flag(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+    plain = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["seqA"])
+    seq = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["seqA"], seq=True)
+    assert seq == tmp_path / "c" / "images-png-seq" and seq != plain
+    assert "--seq" in calls[1] and "--seq" not in calls[0]
+    assert (seq / "seqA.png").read_bytes() == b"seq" and (plain / "seqA.png").read_bytes() == b"img"
+    _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["seqA"], seq=True)
+    assert len(calls) == 2                                  # cached independently of the plain dir
 
 
 def test_ensure_images_installs_chromium_once_when_playwright_is_missing(tmp_path, monkeypatch):
@@ -140,7 +155,7 @@ def test_ensure_images_installs_chromium_once_when_playwright_is_missing(tmp_pat
         calls, fail_first_export_with=b"browserType.launch: Executable doesn't exist. "
                                       b"Please run: npx playwright install"))
 
-    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
     assert (out / "index.png").exists()
     # NOTE: matching on "-c" (the install invocation's flag), not a substring like "install" —
     # pytest's tmp_path for *this* test literally embeds "install" (from "installs" in the test
@@ -160,8 +175,20 @@ def test_ensure_images_reraises_non_playwright_failures(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(
         calls, fail_first_export_with=b"Error: invalid view predicate"))
     with pytest.raises(RuntimeError, match="invalid view predicate"):
-        _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
+        _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
     assert len(calls) == 1                                  # no install attempt, no retry
+
+
+def test_ensure_images_recreates_a_deleted_dir_on_a_stamp_hit(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
+    import shutil as _sh
+    _sh.rmtree(out)                                         # user cleaned the renders by hand
+    assert _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"]) == out
+    assert (out / "index.png").exists() and len(calls) == 2
 
 
 def test_ensure_images_and_views_raise_when_npx_missing(tmp_path, monkeypatch):
@@ -170,6 +197,6 @@ def test_ensure_images_and_views_raise_when_npx_missing(tmp_path, monkeypatch):
     # can only be called once per tmp_path — bind and reuse rather than calling it twice.
     src = _model(tmp_path)
     with pytest.raises(_runner.LikeC4Missing):
-        _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png")
+        _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
     with pytest.raises(_runner.LikeC4Missing):
         _runner.ensure_views(src, tmp_path / "c", "1.59.2")

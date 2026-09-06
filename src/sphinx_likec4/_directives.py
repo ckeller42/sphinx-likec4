@@ -12,6 +12,8 @@ from docutils.parsers.rst import Directive, directives
 from docutils.parsers.rst.directives.images import Image
 from sphinx.errors import ExtensionError
 
+from . import _runner
+
 _HEIGHT_RE = re.compile(r"^[0-9]+(px|em|rem|vh|%)$")
 
 
@@ -212,11 +214,21 @@ class LikeC4View(Directive):
         The URI is relative to this document so Sphinx's image collector resolves it —
         relative paths may escape ``srcdir``.
         """
-        # ":mode: sequence" on a dynamic view picks the --seq export pass (sequence layout);
-        # if that pass is unavailable (it failed on an iframe builder) the diagram layout stands in
+        # ":mode: sequence" on a dynamic view picks the --seq export (sequence layout)
         seq = (self.options.get("mode") == "sequence" and view in env.likec4_dynamic_views
                and fmt in env.likec4_images_seq)
-        file = Path((env.likec4_images_seq if seq else env.likec4_images)[fmt]) / f"{view}.{fmt}"
+        env.likec4_needed.setdefault(env.docname, set()).add((view, fmt, seq))
+        images_dir = Path((env.likec4_images_seq if seq else env.likec4_images)[fmt])
+        file = images_dir / f"{view}.{fmt}"
+        if not file.exists():
+            # first build / new embed: export on demand. Sphinx's image collector runs on
+            # doctree-read, after this directive, so the file is in place in time — in a
+            # parallel read worker too (concurrent CLI exports coexist; see the spec).
+            try:
+                _runner.ensure_images(Path(env.likec4_source_dir), images_dir.parent,
+                                      env.config.likec4_version, fmt, [view], seq=seq)
+            except RuntimeError as e:
+                raise ExtensionError(f"likec4-view: image export failed for {view!r}: {e}") from e
         if not file.exists():
             raise ExtensionError(
                 f"likec4-view: no exported {fmt} for view {view!r} in {file.parent} "
