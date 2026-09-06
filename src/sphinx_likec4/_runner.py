@@ -138,12 +138,13 @@ def ensure_views(source_dir: Path, cache_dir: Path, version: str) -> tuple[set[s
 
 
 def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
-                  seq_views: Iterable[str] = ()) -> Path:
-    """Export views as ``<view-id>.<fmt>`` into ``cache_dir/images-<fmt>`` (cached).
+                  views: Iterable[str], seq: bool = False) -> Path:
+    """Export ``views`` as ``<view-id>.<fmt>`` into ``cache_dir/images-<fmt>[-seq]`` — additively.
 
-    ``fmt`` is ``"png"`` or ``"jpg"``. With ``seq_views`` (dynamic view ids), export only
-    those with ``--seq`` — sequence layout — into ``images-<fmt>-seq`` instead; the CLI's
-    ``--seq`` applies to the whole run, hence a separate pass and directory.
+    The directory is stamped with the source digest; a stale stamp (sources changed) wipes it
+    first. Only views whose file is missing are exported, in one CLI run — nothing missing
+    means no CLI call, so callers can ask freely. ``seq`` selects sequence layout (``--seq``)
+    and the ``-seq`` directory, since the CLI's ``--seq`` applies to the whole run.
 
     The export drives headless Chromium through Playwright; if the first attempt fails for
     lack of a browser, install Chromium once through likec4's *own* Playwright (so the
@@ -152,17 +153,19 @@ def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
     """
     npx = _require_npx()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    seq = sorted(seq_views)
     name = f"images-{fmt}-seq" if seq else f"images-{fmt}"
     out, stamp = cache_dir / name, cache_dir / f"{name}.stamp"
-    digest = source_hash(source_dir, version, [fmt, *(["seq", *seq] if seq else [])])
-    if stamp.exists() and stamp.read_text() == digest and out.is_dir():
+    digest = source_hash(source_dir, version, [fmt, "seq"] if seq else [fmt])
+    if not (stamp.exists() and stamp.read_text() == digest):
+        shutil.rmtree(out, ignore_errors=True)               # stale renders must not survive
+        out.mkdir(parents=True)
+        stamp.write_text(digest)
+    missing = sorted(v for v in set(views) if not (out / f"{v}.{fmt}").exists())
+    if not missing:
         return out
-    shutil.rmtree(out, ignore_errors=True)
     cli = f"likec4@{version}"
-    filters = [arg for v in seq for arg in ("-f", v)]
-    export = [cli, "export", fmt, "--flat", *(["--seq"] if seq else []), *filters,
-              "-o", str(out), str(source_dir)]
+    export = [cli, "export", fmt, "--flat", *(["--seq"] if seq else []),
+              *(arg for v in missing for arg in ("-f", v)), "-o", str(out), str(source_dir)]
     try:
         _run(npx, export, cwd=source_dir)
     except RuntimeError as e:
@@ -171,5 +174,4 @@ def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
             raise
         _run(npx, ["--package", cli, "-c", "playwright install chromium"], cwd=source_dir)
         _run(npx, export, cwd=source_dir)
-    stamp.write_text(digest)
     return out
