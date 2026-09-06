@@ -166,3 +166,42 @@ riskiest part of the extension, for a gain only large models would notice).
   `ensure_images(..., seq_views=…)` pass runs `export <fmt> --flat --seq -f <id>…` into
   `images-<fmt>-seq/` (own stamp). `ensure_build` no longer exports JSON itself — every builder
   gets its ids from `ensure_views`. Projects without dynamic views pay nothing extra.
+
+## Lazy export (2026-09-06, supersedes "export all views at builder-inited")
+
+Motivation (issue #10): the eager export rendered every view for every image-capable builder —
+plain HTML included — on each source change. Replaced by exporting only what is embedded.
+
+**Facts the design rests on (verified with `likec4@1.59.2`):** `export <fmt> --flat -f <id> -o DIR`
+is *additive* — it never clears `DIR` — and two concurrent exports into one `DIR` both succeed.
+Sphinx's image collector runs on `doctree-read`, i.e. after a document's directives, so a file a
+directive creates during `run()` is found in time; that holds in parallel read workers too.
+
+- **Runner.** `ensure_images(source_dir, cache_dir, version, fmt, views, seq=False) -> Path` is
+  view-scoped and additive. `images-<fmt>[-seq]/` carries a stamp with the source digest
+  (`source_hash(..., [fmt] + ["seq"] if seq)`); a differing stamp means the sources changed —
+  wipe the dir, restamp. Then export, in one CLI run, only the `views` whose file is missing:
+  `export <fmt> --flat [--seq] -f a -f b … -o DIR`. Nothing to do → no CLI call. The Playwright
+  install-on-first-failure logic is unchanged.
+- **Remembered set.** `LikeC4View._image` records `(view, fmt, seq)` in
+  `env.likec4_needed[env.docname]` (a `dict[str, set]`). Sphinx bookkeeping: `env-purge-doc`
+  deletes the docname's entry, `env-merge-info` unions a worker's entries into the main env.
+  At `builder-inited` the previous build's union (the env is unpickled before that event) is
+  exported batched, grouped by `(fmt, seq)`, for every image-capable builder. This is what keeps
+  incremental builds correct: after a source change the dirs are wiped, and views referenced only
+  by doctrees that will not be re-read are re-exported before the write phase copies them.
+- **On demand.** If the file is still missing in `_image` (first build, new embed), the directive
+  calls `ensure_images(..., views=[view], seq=…)` itself and re-checks; still missing → the
+  existing `ExtensionError`. A CLI failure there is fatal (the page asked for an image, or the
+  builder defaults to one) — the "warning on iframe-default builders" policy applies to the
+  batched pass only.
+- **Unchanged:** `ensure_views` (validation + dynamic ids, no browser), `likec4_export_images`,
+  `likec4_render`, `:render:` resolution, `:mode: sequence`, `env-get-outdated` re-read,
+  `env.likec4_images` / `likec4_images_seq` (dirs now created lazily — `{fmt: dir}` for every
+  exported format regardless of whether files exist yet).
+- **Consequences:** plain HTML never starts Chromium unless a page uses `:render: png`;
+  unreferenced views are never rendered; a first build pays one CLI run per newly referenced
+  view, rebuilds pay one batched run per `(fmt, seq)` only when sources changed.
+- **Not built (ponytail):** an eager-export switch (the remembered set makes the second build
+  batched anyway), per-view stamps (dir-level digest suffices), lock files (not needed per the
+  concurrency check).
