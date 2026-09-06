@@ -26,7 +26,7 @@ Install: `pip install sphinx-likec4` (PyPI) or `pip install "sphinx-likec4 @ git
 .. likec4-view:: <view-id>
    :height: 420px            # optional, default 460px
    :title: Upload flow       # optional iframe title (a11y)
-   :mode: sequence           # optional: diagram (default) | sequence — dynamic views only
+   :mode: sequence           # optional: diagram (default) | sequence — dynamic views only; also picks the sequence-layout PNG in image mode
    :render: png              # optional: iframe (HTML default) | png | jpg | text — a preference; non-HTML builders default to png
    :width: 80%               # image-mode passthroughs: width, height, alt, align, scale
 
@@ -45,7 +45,8 @@ MyST markdown form:
 ````
 
 - `<view-id>` = the view name from your `views { view <id> ... }` / `dynamic view <id>` blocks.
-  Dynamic views share the same id space; `:mode: sequence` opens them in sequence rendering.
+  Dynamic views share the same id space; `:mode: sequence` opens them in sequence rendering — in
+  the iframe and, via a second `--seq` export pass, in static PNG/JPG output too.
 - An **unknown view id fails the build** (lists the known ids) — fix the id, don't retry blindly.
 - LaTeX/PDF and epub builds render views as static PNG automatically (default `png`); only
   builders that cannot embed images at all (text, man, linkcheck) fall back to plain text.

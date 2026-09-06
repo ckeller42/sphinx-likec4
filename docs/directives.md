@@ -49,8 +49,10 @@ It is a **preference, not a demand** — the same source builds for every output
   and no image export runs.
 - `:render: jpg` needs `"jpg"` somewhere in `likec4_render` (only PNG is exported unless asked).
 - In image mode `width`, `height`, `alt`, `align`, `scale` pass through to the image with the
-  standard docutils validators; `alt` defaults to `title`. `mode` is ignored — dynamic views
-  export in their diagram layout.
+  standard docutils validators; `alt` defaults to `title`.
+- `:mode: sequence` works in image mode too: dynamic views are exported a second time in
+  sequence layout (`--seq`), and the directive picks that rendering. On non-dynamic views the
+  option is ignored, as in the viewer.
 
 ## likec4-model
 

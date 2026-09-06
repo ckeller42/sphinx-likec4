@@ -161,3 +161,8 @@ riskiest part of the extension, for a gain only large models would notice).
 - An image-export `RuntimeError` is a warning on iframe-default builders (the build keeps
   working without Chromium) and fatal on image-default builders.
 - `_image` raises a clear `ExtensionError` when the exported file is missing.
+- (follow-up PR) `:mode: sequence` is honored in image mode: `ensure_views` also returns the
+  dynamic view ids (`"_type": "dynamic"` in the export JSON) and, when there are any, a second
+  `ensure_images(..., seq_views=…)` pass runs `export <fmt> --flat --seq -f <id>…` into
+  `images-<fmt>-seq/` (own stamp). `ensure_build` no longer exports JSON itself — every builder
+  gets its ids from `ensure_views`. Projects without dynamic views pay nothing extra.

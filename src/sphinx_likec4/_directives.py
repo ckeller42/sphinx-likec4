@@ -212,9 +212,11 @@ class LikeC4View(Directive):
         The URI is relative to this document so Sphinx's image collector resolves it —
         relative paths may escape ``srcdir``.
         """
-        # ponytail: :mode: sequence is ignored here — --seq is global to an export run; add a
-        # filtered --seq pass into images-<fmt>/seq when someone needs sequence PNGs
-        file = Path(env.likec4_images[fmt]) / f"{view}.{fmt}"
+        # ":mode: sequence" on a dynamic view picks the --seq export pass (sequence layout);
+        # if that pass is unavailable (it failed on an iframe builder) the diagram layout stands in
+        seq = (self.options.get("mode") == "sequence" and view in env.likec4_dynamic_views
+               and fmt in env.likec4_images_seq)
+        file = Path((env.likec4_images_seq if seq else env.likec4_images)[fmt]) / f"{view}.{fmt}"
         if not file.exists():
             raise ExtensionError(
                 f"likec4-view: no exported {fmt} for view {view!r} in {file.parent} "

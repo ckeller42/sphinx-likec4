@@ -15,6 +15,7 @@ ROOT = Path(__file__).parent / "roots" / "test-basic"
 _PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da"
     "63f8ffff3f0300050001ff5fd5ac0000000049454e44ae426082")
+_PNG_SEQ = _PNG + b"seq"      # distinguishable stand-in for the --seq export pass
 
 
 @pytest.fixture(autouse=True)
@@ -22,16 +23,19 @@ def fake_images(monkeypatch):
     """Every image-capable build exports images; fake both export entry points, record formats."""
     calls = []
 
-    def fake(source_dir, cache_dir, version, fmt):
-        calls.append(fmt)
-        out = cache_dir / f"images-{fmt}"
+    def fake(source_dir, cache_dir, version, fmt, seq_views=()):
+        seq = sorted(seq_views)
+        calls.append(f"{fmt}-seq" if seq else fmt)
+        out = cache_dir / (f"images-{fmt}-seq" if seq else f"images-{fmt}")
         out.mkdir(parents=True, exist_ok=True)
-        for view in ("index", "seqA"):
-            (out / f"{view}.{fmt}").write_bytes(_PNG)
+        for view in seq or ("index", "seqA"):
+            (out / f"{view}.{fmt}").write_bytes(_PNG_SEQ if seq else _PNG)
         return out
 
     monkeypatch.setattr(_runner, "ensure_images", fake)
-    monkeypatch.setattr(_runner, "ensure_views", lambda source_dir, cache_dir, version: {"index", "seqA"})
+    # no dynamic views by default; tests that need the --seq pass patch ensure_views themselves
+    monkeypatch.setattr(_runner, "ensure_views",
+                        lambda source_dir, cache_dir, version: ({"index", "seqA"}, set()))
     return calls
 
 
@@ -44,16 +48,23 @@ def fake_build(monkeypatch):
         dist = cache_dir / "dist"
         dist.mkdir(parents=True, exist_ok=True)
         (dist / "index.html").write_text("<html>fake viewer</html>")
-        return dist, {"index", "seqA"}
+        return dist
     monkeypatch.setattr(_runner, "ensure_build", fake)
     return calls
 
 
 def _app(tmp_path, srcdir=ROOT, confoverrides=None, builder="html", strict=True):
+    """Build once; ``strict`` means -W semantics on every Sphinx in the matrix.
+
+    Sphinx <8.1 raises on the first warning under ``warningiserror``; >=8.1 only records
+    them in ``statuscode``. Raise ourselves so a warning fails the test on both.
+    """
     out = tmp_path / "out"
     app = Sphinx(str(srcdir), str(srcdir), str(out), str(tmp_path / "doctrees"),
                  builder, confoverrides=confoverrides or {}, warningiserror=strict)
     app.build()
+    if strict and app.statuscode:
+        raise SphinxError(f"build finished with warnings (statuscode {app.statuscode})")
     return app, out
 
 
@@ -130,13 +141,14 @@ def test_incremental_build_detects_stale_view_after_rename(tmp_path, monkeypatch
     out = tmp_path / "out"
     dt = tmp_path / "dt"
 
-    def fake_v1(source_dir, cache_dir, version, build_args):
+    def fake_dist(source_dir, cache_dir, version, build_args):
         dist = cache_dir / "dist"
         dist.mkdir(parents=True, exist_ok=True)
         (dist / "index.html").write_text("<html>fake viewer</html>")
-        return dist, {"index", "seqA"}
+        return dist
 
-    monkeypatch.setattr(_runner, "ensure_build", fake_v1)
+    monkeypatch.setattr(_runner, "ensure_build", fake_dist)
+    monkeypatch.setattr(_runner, "ensure_views", lambda *a: ({"index", "seqA"}, set()))
     # each Sphinx() app registers docutils nodes into a process-global registry;
     # nest each app's lifetime in its own docutils_namespace() so this test's two
     # in-process "fresh Sphinx object" builds don't trip a spurious re-registration
@@ -152,13 +164,7 @@ def test_incremental_build_detects_stale_view_after_rename(tmp_path, monkeypatch
         "views { view renamed { include * } }\n"
     )
 
-    def fake_v2(source_dir, cache_dir, version, build_args):
-        dist = cache_dir / "dist"
-        dist.mkdir(parents=True, exist_ok=True)
-        (dist / "index.html").write_text("<html>fake viewer</html>")
-        return dist, {"renamed", "seqA"}
-
-    monkeypatch.setattr(_runner, "ensure_build", fake_v2)
+    monkeypatch.setattr(_runner, "ensure_views", lambda *a: ({"renamed", "seqA"}, set()))
     with docutils_namespace():
         app2 = Sphinx(str(src), str(src), str(out), str(dt), "html", warningiserror=True)
         with pytest.raises(SphinxError):  # "index" no longer exists post-rename
@@ -373,16 +379,9 @@ def test_image_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_bu
         app, out = _app(tmp_path, confoverrides={"suppress_warnings": ["likec4"]})
     assert app.env.likec4_images == {}
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
-    # -W without suppression must still fail the build: Sphinx <8.1 raises on the first
-    # warning, Sphinx >=8.1 records it and exits non-zero
     (tmp_path / "strict").mkdir()
-    try:
-        with docutils_namespace():
-            strict_app, _ = _app(tmp_path / "strict")
-    except SphinxError:
-        pass
-    else:
-        assert strict_app.statuscode != 0
+    with pytest.raises(SphinxError), docutils_namespace():   # -W without suppression still fails
+        _app(tmp_path / "strict")
 
 
 def test_image_export_failure_fails_image_builders(tmp_path, fake_build, monkeypatch):
@@ -395,7 +394,7 @@ def test_image_export_failure_fails_image_builders(tmp_path, fake_build, monkeyp
 
 
 def test_missing_exported_file_is_an_error(tmp_path, fake_build, monkeypatch):
-    def partial(source_dir, cache_dir, version, fmt):
+    def partial(source_dir, cache_dir, version, fmt, seq_views=()):
         out = cache_dir / f"images-{fmt}"
         out.mkdir(parents=True, exist_ok=True)
         (out / f"index.{fmt}").write_bytes(_PNG)            # seqA deliberately missing
@@ -439,3 +438,55 @@ def test_docutils_image_heights_are_accepted(tmp_path, fake_build):
     assert "height: 100px" in html or 'height="100"' in html
     assert "height: 12pt" in html
     assert "height:300px" in html                  # unitless iframe height gets its CSS unit
+
+
+def _with_dynamic_seqa(monkeypatch):
+    monkeypatch.setattr(_runner, "ensure_views",
+                        lambda source_dir, cache_dir, version: ({"index", "seqA"}, {"seqA"}))
+
+
+def test_mode_sequence_in_image_mode_uses_the_seq_export(tmp_path, fake_build, fake_images, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+    src = _src(tmp_path, "s", (
+        "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n\n"
+        ".. likec4-view:: seqA\n   :render: png\n\n"                 # same view, diagram layout
+        ".. likec4-view:: index\n   :render: png\n   :mode: sequence\n"))   # not dynamic: ignored
+    out = _build(tmp_path, srcdir=src)
+    assert fake_images == ["png", "png-seq"]                 # one plain pass, one --seq pass
+    copied = {p.name: p.read_bytes() for p in (out / "_images").iterdir()}
+    assert sorted(copied) == ["index.png", "seqA.png", "seqA1.png"]   # Sphinx dedups the basename
+    assert sorted(copied.values(), key=len) == [_PNG, _PNG, _PNG_SEQ]  # exactly one from the seq pass
+    html = (out / "index.html").read_text()
+    assert html.count("_images/seqA") == 2 and "_images/index.png" in html
+
+
+def test_no_dynamic_views_means_no_seq_pass(tmp_path, fake_build, fake_images):
+    app, _ = _app(tmp_path, builder="latex")
+    assert fake_images == ["png"] and app.env.likec4_images_seq == {}
+    assert app.env.likec4_dynamic_views == set()
+
+
+def test_seq_pass_runs_for_latex_and_is_read_by_mode_sequence(tmp_path, fake_build, fake_images, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :mode: sequence\n")
+    app, out = _app(tmp_path, srcdir=src, builder="latex")
+    assert fake_images == ["png", "png-seq"] and app.env.likec4_dynamic_views == {"seqA"}
+    assert (out / "seqA.png").read_bytes() == _PNG_SEQ
+
+
+def test_seq_export_failure_keeps_normal_images_on_iframe_builders(tmp_path, fake_build, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+
+    def flaky(source_dir, cache_dir, version, fmt, seq_views=()):
+        if seq_views:
+            raise RuntimeError("chromium crashed during the --seq pass")
+        out = cache_dir / f"images-{fmt}"
+        out.mkdir(parents=True, exist_ok=True)
+        for view in ("index", "seqA"):
+            (out / f"{view}.{fmt}").write_bytes(_PNG)
+        return out
+    monkeypatch.setattr(_runner, "ensure_images", flaky)
+    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n")
+    app, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
+    assert set(app.env.likec4_images) == {"png"} and app.env.likec4_images_seq == {}
+    assert (out / "_images" / "seqA.png").read_bytes() == _PNG      # diagram layout stands in
