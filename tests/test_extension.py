@@ -23,12 +23,12 @@ def fake_images(monkeypatch):
     """Every image-capable build exports images; fake both export entry points, record formats."""
     calls = []
 
-    def fake(source_dir, cache_dir, version, fmt, seq_views=()):
-        seq = sorted(seq_views)
-        calls.append(f"{fmt}-seq" if seq else fmt)
+    def fake(source_dir, cache_dir, version, fmt, views, seq=False):
+        views = tuple(sorted(views))
+        calls.append((fmt, views, seq))
         out = cache_dir / (f"images-{fmt}-seq" if seq else f"images-{fmt}")
         out.mkdir(parents=True, exist_ok=True)
-        for view in seq or ("index", "seqA"):
+        for view in views:
             (out / f"{view}.{fmt}").write_bytes(_PNG_SEQ if seq else _PNG)
         return out
 
@@ -206,12 +206,12 @@ def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
     assert 'src="_likec4/#/view/seqA/?dynamic=sequence"' in (out / "index.html").read_text()
 
 
-def test_html_default_is_iframe_and_still_exports_png(tmp_path, fake_build, fake_images):
+def test_html_default_is_iframe_and_exports_nothing(tmp_path, fake_build, fake_images):
     app, _ = _app(tmp_path)
     assert app.env.likec4_mode == "ready"
     assert app.env.likec4_format == "html"
     assert app.env.likec4_render_default == "iframe"
-    assert set(app.env.likec4_images) == {"png"} and fake_images == ["png"]
+    assert set(app.env.likec4_images) == {"png"} and fake_images == []
     assert app.env.likec4_dist is not None
 
 
@@ -219,7 +219,7 @@ def test_latex_default_is_png_without_viewer_build(tmp_path, fake_build, fake_im
     app, _ = _app(tmp_path, builder="latex")
     assert app.env.likec4_mode == "ready"
     assert app.env.likec4_render_default == "png"
-    assert fake_images == ["png"]
+    assert fake_images == [("png", ("index",), False), ("png", ("seqA",), False)]
     assert fake_build == []                                 # no viewer build off HTML
     assert app.env.likec4_dist is None
     assert app.env.likec4_views == {"index", "seqA"}        # ids come from ensure_views
@@ -235,14 +235,15 @@ def test_text_builder_exports_nothing(tmp_path, fake_images):
 def test_likec4_render_override_adds_jpg_export(tmp_path, fake_build, fake_images):
     app, _ = _app(tmp_path, builder="latex", confoverrides={"likec4_render": {"latex": "jpg"}})
     assert app.env.likec4_render_default == "jpg"
-    assert sorted(fake_images) == ["jpg", "png"]            # png is always exported
+    assert {c[0] for c in fake_images} == {"jpg"} and set(app.env.likec4_images) == {"jpg", "png"}
 
 
-def test_likec4_render_for_another_format_still_exports_that_format(tmp_path, fake_build, fake_images):
-    # an HTML build must export jpg too when some other builder's config names it —
-    # the same .rst may carry ":render: jpg" and the resolver only knows what was exported
-    _app(tmp_path, confoverrides={"likec4_render": {"latex": "jpg"}})
-    assert sorted(fake_images) == ["jpg", "png"]
+def test_likec4_render_for_another_format_still_lists_that_format(tmp_path, fake_build, fake_images):
+    # an HTML build must list jpg too when some other builder's config names it —
+    # the same .rst may carry ":render: jpg" and the resolver only knows what was exported;
+    # nothing on this HTML build actually embeds a jpg, so nothing is exported
+    app, _ = _app(tmp_path, confoverrides={"likec4_render": {"latex": "jpg"}})
+    assert fake_images == [] and set(app.env.likec4_images) == {"jpg", "png"}
 
 
 def test_likec4_render_rejects_unknown_mode(tmp_path, fake_build):
@@ -255,13 +256,14 @@ def test_epub_is_image_capable(tmp_path, fake_build, fake_images):
     # which has nothing to do with this extension
     app, _ = _app(tmp_path, builder="epub", strict=False)
     assert app.env.likec4_format == "epub"
-    assert app.env.likec4_render_default == "png" and fake_images == ["png"]
+    assert app.env.likec4_render_default == "png"
+    assert fake_images == [("png", ("index",), False), ("png", ("seqA",), False)]
 
 
 def test_likec4_render_epub_key_overrides_epub(tmp_path, fake_build, fake_images):
     app, _ = _app(tmp_path, builder="epub", strict=False, confoverrides={"likec4_render": {"epub": "jpg"}})
     assert app.env.likec4_render_default == "jpg"
-    assert sorted(fake_images) == ["jpg", "png"]
+    assert {c[0] for c in fake_images} == {"jpg"}
     assert fake_build == []                                 # epub never builds the iframe viewer
 
 
@@ -371,30 +373,123 @@ def test_export_images_false_overrides_html_png_config(tmp_path, fake_build, fak
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
 
 
-def test_image_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_build, monkeypatch):
-    def boom(*a, **k):
-        raise RuntimeError("chromium: error while loading shared libraries")
-    monkeypatch.setattr(_runner, "ensure_images", boom)
-    with docutils_namespace():                  # two apps in one test; see conftest.py
-        app, out = _app(tmp_path, confoverrides={"suppress_warnings": ["likec4"]})
-    assert app.env.likec4_images == {}
+def _boom(*a, **k):
+    raise RuntimeError("chromium: error while loading shared libraries")
+
+
+def _remembered_png_src(tmp_path):
+    """Build once so index.rst's png embed is in env.likec4_needed, then touch the page."""
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    with docutils_namespace():
+        _app(tmp_path, srcdir=src)
+    (src / "index.rst").write_text("P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. note:: touched\n")
+    return src
+
+
+def test_batched_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_build, fake_images, monkeypatch):
+    src = _remembered_png_src(tmp_path)
+    assert fake_images == [("png", ("index",), False)]
+    monkeypatch.setattr(_runner, "ensure_images", _boom)
+    # the batched pass at builder-inited fails → warning, images disabled for this build,
+    # the re-read page falls back to the iframe (HTML default)
+    with docutils_namespace():
+        app, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
+    assert app.env.likec4_images == {} and app.env.likec4_images_seq == {}
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
-    (tmp_path / "strict").mkdir()
-    with pytest.raises(SphinxError), docutils_namespace():   # -W without suppression still fails
-        _app(tmp_path / "strict")
 
 
-def test_image_export_failure_fails_image_builders(tmp_path, fake_build, monkeypatch):
+def test_batched_export_failure_fails_a_strict_build(tmp_path, fake_build, fake_images, monkeypatch):
+    src = _remembered_png_src(tmp_path)
+    monkeypatch.setattr(_runner, "ensure_images", _boom)
+    with pytest.raises(SphinxError), docutils_namespace():       # -W without suppression
+        _app(tmp_path, srcdir=src)
+
+
+def test_images_coming_back_rereads_cached_fallbacks(tmp_path, fake_build, fake_images, monkeypatch):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    with docutils_namespace():                                 # build 1: png embedded, remembered
+        _app(tmp_path, srcdir=src)
+    real = _runner.ensure_images
+
     def boom(*a, **k):
         raise RuntimeError("chromium: error while loading shared libraries")
     monkeypatch.setattr(_runner, "ensure_images", boom)
-    with pytest.raises(SphinxError) as excinfo:
-        _app(tmp_path, builder="latex")
-    assert "shared libraries" in str(getattr(excinfo.value, "orig_exc", excinfo.value))
+    (src / "index.rst").write_text("P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. note:: touched\n")
+    with docutils_namespace():                                 # build 2: export broken → iframe fallback
+        _, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
+    assert "<iframe" in (out / "index.html").read_text()
+    monkeypatch.setattr(_runner, "ensure_images", real)
+    with docutils_namespace():                                 # build 3: images back, nothing edited
+        app, out = _app(tmp_path, srcdir=src)
+    assert 'src="_images/index.png"' in (out / "index.html").read_text()   # re-read, not the cached iframe
+    assert app.env.likec4_needed == {"index": {("index", "png", False)}}
+
+
+def test_on_demand_export_failure_is_fatal(tmp_path, fake_build, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("chromium: error while loading shared libraries")
+    monkeypatch.setattr(_runner, "ensure_images", boom)
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    with pytest.raises(SphinxError, match="shared libraries"):     # explicit ask → fatal, on HTML too
+        _app(tmp_path, srcdir=src)
+    with pytest.raises(SphinxError, match="shared libraries"):     # image-default builder too
+        _app(tmp_path / "l", builder="latex")
+
+
+def test_html_render_png_exports_only_that_view(tmp_path, fake_build, fake_images):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    out = _build(tmp_path, srcdir=src)
+    assert fake_images == [("png", ("index",), False)]
+    assert (out / "_images" / "index.png").exists()
+
+
+def test_rebuild_exports_the_remembered_set_batched_before_reading(tmp_path, fake_build, fake_images):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    with docutils_namespace():
+        app, _ = _app(tmp_path, srcdir=src)
+    assert app.env.likec4_needed == {"index": {("index", "png", False)}}
+    fake_images.clear()
+    with docutils_namespace():                                 # nothing changed: no doc re-read
+        app2, _ = _app(tmp_path, srcdir=src)
+    assert fake_images == [("png", ("index",), False)]         # one batched call, from the remembered set
+    assert app2.env.likec4_needed == {"index": {("index", "png", False)}}
+
+
+def test_removed_doc_leaves_the_remembered_set(tmp_path, fake_build, fake_images):
+    src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. toctree::\n\n   other\n")
+    (src / "other.rst").write_text("O\n=\n\n.. likec4-view:: seqA\n   :render: png\n")
+    with docutils_namespace():
+        app, _ = _app(tmp_path, srcdir=src)
+    assert set(app.env.likec4_needed) == {"index", "other"}
+    (src / "other.rst").unlink()
+    (src / "index.rst").write_text("P\n=\n\n.. likec4-view:: index\n   :render: png\n")
+    fake_images.clear()
+    with docutils_namespace():
+        app2, _ = _app(tmp_path, srcdir=src)
+    assert set(app2.env.likec4_needed) == {"index"}
+    assert ("png", ("index", "seqA"), False) in fake_images    # batched pass used the OLD set …
+    assert all(c[1] != ("seqA",) for c in fake_images)         # … but nothing re-embedded seqA
+
+
+def test_seq_export_failure_on_demand_is_fatal(tmp_path, fake_build, monkeypatch):
+    _with_dynamic_seqa(monkeypatch)
+
+    def flaky(source_dir, cache_dir, version, fmt, views, seq=False):
+        if seq:
+            raise RuntimeError("chromium crashed during the --seq pass")
+        out = cache_dir / f"images-{fmt}"
+        out.mkdir(parents=True, exist_ok=True)
+        for view in views:
+            (out / f"{view}.{fmt}").write_bytes(_PNG)
+        return out
+    monkeypatch.setattr(_runner, "ensure_images", flaky)
+    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n")
+    with pytest.raises(SphinxError, match="--seq pass"):
+        _app(tmp_path, srcdir=src)
 
 
 def test_missing_exported_file_is_an_error(tmp_path, fake_build, monkeypatch):
-    def partial(source_dir, cache_dir, version, fmt, seq_views=()):
+    def partial(source_dir, cache_dir, version, fmt, views, seq=False):
         out = cache_dir / f"images-{fmt}"
         out.mkdir(parents=True, exist_ok=True)
         (out / f"index.{fmt}").write_bytes(_PNG)            # seqA deliberately missing
@@ -452,7 +547,7 @@ def test_mode_sequence_in_image_mode_uses_the_seq_export(tmp_path, fake_build, f
         ".. likec4-view:: seqA\n   :render: png\n\n"                 # same view, diagram layout
         ".. likec4-view:: index\n   :render: png\n   :mode: sequence\n"))   # not dynamic: ignored
     out = _build(tmp_path, srcdir=src)
-    assert fake_images == ["png", "png-seq"]                 # one plain pass, one --seq pass
+    assert fake_images == [("png", ("seqA",), True), ("png", ("seqA",), False), ("png", ("index",), False)]
     copied = {p.name: p.read_bytes() for p in (out / "_images").iterdir()}
     assert sorted(copied) == ["index.png", "seqA.png", "seqA1.png"]   # Sphinx dedups the basename
     assert sorted(copied.values(), key=len) == [_PNG, _PNG, _PNG_SEQ]  # exactly one from the seq pass
@@ -462,7 +557,8 @@ def test_mode_sequence_in_image_mode_uses_the_seq_export(tmp_path, fake_build, f
 
 def test_no_dynamic_views_means_no_seq_pass(tmp_path, fake_build, fake_images):
     app, _ = _app(tmp_path, builder="latex")
-    assert fake_images == ["png"] and app.env.likec4_images_seq == {}
+    assert fake_images == [("png", ("index",), False), ("png", ("seqA",), False)]
+    assert app.env.likec4_images_seq == {}
     assert app.env.likec4_dynamic_views == set()
 
 
@@ -470,23 +566,5 @@ def test_seq_pass_runs_for_latex_and_is_read_by_mode_sequence(tmp_path, fake_bui
     _with_dynamic_seqa(monkeypatch)
     src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :mode: sequence\n")
     app, out = _app(tmp_path, srcdir=src, builder="latex")
-    assert fake_images == ["png", "png-seq"] and app.env.likec4_dynamic_views == {"seqA"}
+    assert fake_images == [("png", ("seqA",), True)] and app.env.likec4_dynamic_views == {"seqA"}
     assert (out / "seqA.png").read_bytes() == _PNG_SEQ
-
-
-def test_seq_export_failure_keeps_normal_images_on_iframe_builders(tmp_path, fake_build, monkeypatch):
-    _with_dynamic_seqa(monkeypatch)
-
-    def flaky(source_dir, cache_dir, version, fmt, seq_views=()):
-        if seq_views:
-            raise RuntimeError("chromium crashed during the --seq pass")
-        out = cache_dir / f"images-{fmt}"
-        out.mkdir(parents=True, exist_ok=True)
-        for view in ("index", "seqA"):
-            (out / f"{view}.{fmt}").write_bytes(_PNG)
-        return out
-    monkeypatch.setattr(_runner, "ensure_images", flaky)
-    src = _src(tmp_path, "s", "S\n=\n\n.. likec4-view:: seqA\n   :render: png\n   :mode: sequence\n")
-    app, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
-    assert set(app.env.likec4_images) == {"png"} and app.env.likec4_images_seq == {}
-    assert (out / "_images" / "seqA.png").read_bytes() == _PNG      # diagram layout stands in
