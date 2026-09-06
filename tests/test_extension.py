@@ -11,6 +11,15 @@ from sphinx_likec4 import _runner
 ROOT = Path(__file__).parent / "roots" / "test-basic"
 
 
+def _root_copy(tmp_path):
+    """A private copy of the test root next to the doctree dir. On Windows CI the checkout and
+    tmp_path live on different drives, and an image URI must be relative to the document."""
+    root = tmp_path / "root"
+    if not root.exists():
+        shutil.copytree(ROOT, root)
+    return root
+
+
 # 1×1 transparent PNG; Sphinx only sniffs the header, so it also stands in for .jpg files
 _PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da"
@@ -55,12 +64,13 @@ def fake_build(monkeypatch):
     return calls
 
 
-def _app(tmp_path, srcdir=ROOT, confoverrides=None, builder="html", strict=True):
+def _app(tmp_path, srcdir=None, confoverrides=None, builder="html", strict=True):
     """Build once; ``strict`` means -W semantics on every Sphinx in the matrix.
 
     Sphinx <8.1 raises on the first warning under ``warningiserror``; >=8.1 only records
     them in ``statuscode``. Raise ourselves so a warning fails the test on both.
     """
+    srcdir = srcdir or _root_copy(tmp_path)
     out = tmp_path / "out"
     app = Sphinx(str(srcdir), str(srcdir), str(out), str(tmp_path / "doctrees"),
                  builder, confoverrides=confoverrides or {}, warningiserror=strict)
@@ -70,17 +80,17 @@ def _app(tmp_path, srcdir=ROOT, confoverrides=None, builder="html", strict=True)
     return app, out
 
 
-def _build(tmp_path, srcdir=ROOT, confoverrides=None):
+def _build(tmp_path, srcdir=None, confoverrides=None):
     return _app(tmp_path, srcdir, confoverrides)[1]
 
 
 def test_view_iframes_and_viewer_copy(tmp_path, fake_build):
     out = _build(tmp_path)
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert '<iframe class="likec4-view" src="_likec4/#/view/index/"' in html
     assert 'src="_likec4/#/view/seqA/"' in html            # dynamic view, same id space
     assert "height:300px" in html
-    sub = (out / "sub" / "page.html").read_text()
+    sub = (out / "sub" / "page.html").read_text(encoding="utf-8")
     assert 'src="../_likec4/#/view/index/"' in sub          # depth-aware
     assert '<iframe class="likec4-model" src="_likec4/"' in html
     assert (out / "_likec4" / "index.html").exists()        # viewer copied
@@ -106,7 +116,7 @@ def test_missing_node_warn_renders_placeholder(tmp_path, monkeypatch):
     app = Sphinx(str(good), str(good), str(out), str(tmp_path / "dt"), "html",
                  confoverrides={"likec4_missing": "warn"})
     app.build()
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert "likec4-placeholder" in html and "<iframe" not in html
 
 
@@ -116,7 +126,7 @@ def test_missing_node_warn_on_latex_renders_text(tmp_path, monkeypatch):
     monkeypatch.setattr(_runner, "ensure_views", boom)
     _, out = _app(tmp_path, builder="latex", strict=False,
                   confoverrides={"likec4_missing": "warn"})
-    tex = next(out.glob("*.tex")).read_text()
+    tex = next(out.glob("*.tex")).read_text(encoding="utf-8")
     assert "LikeC4 view" in tex and "LikeC4 model (interactive" in tex
 
 
@@ -130,10 +140,10 @@ def test_missing_node_error_fails_build(tmp_path, monkeypatch):
 
 def test_non_html_builder_renders_plain_text(tmp_path):
     out = tmp_path / "out"
-    app = Sphinx(str(ROOT), str(ROOT), str(out), str(tmp_path / "dt"), "text",
+    app = Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(out), str(tmp_path / "dt"), "text",
                  warningiserror=True)
     app.build()
-    txt = (out / "index.txt").read_text()
+    txt = (out / "index.txt").read_text(encoding="utf-8")
     assert "LikeC4 view" in txt and "iframe" not in txt
 
 
@@ -180,7 +190,7 @@ def test_title_with_quote_is_html_escaped(tmp_path, fake_build):
         'T\n=\n\n.. likec4-view:: index\n   :title: a "quoted" title\n')
     (src / "sub" / "page.rst").unlink()
     out = _build(tmp_path, srcdir=src)
-    html_text = (out / "index.html").read_text()
+    html_text = (out / "index.html").read_text(encoding="utf-8")
     assert 'title="a &quot;quoted&quot; title"' in html_text
     assert 'title="a "quoted" title"' not in html_text
 
@@ -190,11 +200,11 @@ def test_suppress_warnings_silences_missing_node_under_dash_w(tmp_path, monkeypa
         raise _runner.LikeC4Missing("no npx")
     monkeypatch.setattr(_runner, "ensure_build", boom)
     out = tmp_path / "out"
-    app = Sphinx(str(ROOT), str(ROOT), str(out), str(tmp_path / "dt"), "html",
+    app = Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(out), str(tmp_path / "dt"), "html",
                  confoverrides={"likec4_missing": "warn", "suppress_warnings": ["likec4"]},
                  warningiserror=True)
     app.build()             # would raise SphinxWarning under -W if not suppressed
-    assert "likec4-placeholder" in (out / "index.html").read_text()
+    assert "likec4-placeholder" in (out / "index.html").read_text(encoding="utf-8")
 
 
 def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
@@ -205,7 +215,7 @@ def test_view_mode_sequence_appends_dynamic_param(tmp_path, fake_build):
         "M\n=\n\n.. likec4-view:: seqA\n   :mode: sequence\n")
     (src / "sub" / "page.rst").unlink()
     out = _build(tmp_path, srcdir=src)
-    assert 'src="_likec4/#/view/seqA/?dynamic=sequence"' in (out / "index.html").read_text()
+    assert 'src="_likec4/#/view/seqA/?dynamic=sequence"' in (out / "index.html").read_text(encoding="utf-8")
 
 
 def test_html_default_is_iframe_and_exports_nothing(tmp_path, fake_build, fake_images):
@@ -280,7 +290,7 @@ def _src(tmp_path, name, index_rst):
 def test_render_png_on_html_emits_img_and_copies_file(tmp_path, fake_build):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :width: 50%\n")
     out = _build(tmp_path, srcdir=src)
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert "<iframe" not in html
     assert 'src="_images/index.png"' in html
     assert 'alt="LikeC4 view index"' in html
@@ -290,12 +300,12 @@ def test_render_png_on_html_emits_img_and_copies_file(tmp_path, fake_build):
 
 def test_alt_defaults_to_title(tmp_path, fake_build):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :title: Cloud\n")
-    assert 'alt="Cloud"' in (_build(tmp_path, srcdir=src) / "index.html").read_text()
+    assert 'alt="Cloud"' in (_build(tmp_path, srcdir=src) / "index.html").read_text(encoding="utf-8")
 
 
 def test_latex_embeds_png_by_default(tmp_path, fake_build):
     _, out = _app(tmp_path, builder="latex")
-    tex = next(out.glob("*.tex")).read_text()
+    tex = next(out.glob("*.tex")).read_text(encoding="utf-8")
     assert "\\sphinxincludegraphics" in tex and "{index}.png" in tex   # Sphinx emits {{index}.png}
     assert (out / "index.png").exists()
     assert "LikeC4 model (interactive" in tex                # likec4-model stays plain text off HTML
@@ -304,18 +314,18 @@ def test_latex_embeds_png_by_default(tmp_path, fake_build):
 def test_render_iframe_falls_back_to_png_on_latex(tmp_path, fake_build):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: iframe\n")
     _, out = _app(tmp_path, srcdir=src, builder="latex")
-    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
+    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text(encoding="utf-8")
 
 
 def test_render_png_on_text_builder_falls_back_to_text(tmp_path):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
     _, out = _app(tmp_path, srcdir=src, builder="text")
-    assert "LikeC4 view 'index'" in (out / "index.txt").read_text()
+    assert "LikeC4 view 'index'" in (out / "index.txt").read_text(encoding="utf-8")
 
 
 def test_likec4_render_html_png_turns_every_view_static(tmp_path, fake_build):
     out = _build(tmp_path, confoverrides={"likec4_render": {"html": "png"}})
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert '<iframe class="likec4-view"' not in html
     assert html.count('_images/') >= 2                       # index + seqA
     assert '<iframe class="likec4-model"' in html            # model embed unaffected on HTML
@@ -330,7 +340,7 @@ def test_render_jpg_without_config_is_an_error(tmp_path, fake_build):
 def test_render_jpg_with_config_works(tmp_path, fake_build):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: jpg\n")
     out = _build(tmp_path, srcdir=src, confoverrides={"likec4_render": {"latex": "jpg"}})
-    assert 'src="_images/index.jpg"' in (out / "index.html").read_text()
+    assert 'src="_images/index.jpg"' in (out / "index.html").read_text(encoding="utf-8")
 
 
 def test_unknown_view_id_fails_latex_build_too(tmp_path, fake_build):
@@ -344,12 +354,12 @@ def test_switching_builders_on_a_shared_doctreedir_rerenders(tmp_path, fake_buil
     # doctrees that hold the HTML iframe nodes
     dt = tmp_path / "dt"
     with docutils_namespace():
-        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "html"), str(dt), "html",
+        Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(tmp_path / "html"), str(dt), "html",
                warningiserror=True).build()
     with docutils_namespace():
-        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "latex"), str(dt), "latex",
+        Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(tmp_path / "latex"), str(dt), "latex",
                warningiserror=True).build()
-    tex = next((tmp_path / "latex").glob("*.tex")).read_text()
+    tex = next((tmp_path / "latex").glob("*.tex")).read_text(encoding="utf-8")
     assert "\\sphinxincludegraphics" in tex and "{index}.png" in tex
 
 
@@ -359,20 +369,20 @@ def test_export_images_false_disables_export_everywhere(tmp_path, fake_build, fa
     with docutils_namespace():
         app, out = _app(tmp_path, confoverrides={"likec4_export_images": False})
     assert fake_images == [] and app.env.likec4_render_default == "iframe"
-    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text(encoding="utf-8")
     (tmp_path / "l").mkdir()
     with docutils_namespace():
         app2, out2 = _app(tmp_path / "l", builder="latex",
                           confoverrides={"likec4_export_images": False})
     assert app2.env.likec4_mode == "non-html" and fake_images == []
-    assert "LikeC4 view" in next(out2.glob("*.tex")).read_text()
+    assert "LikeC4 view" in next(out2.glob("*.tex")).read_text(encoding="utf-8")
 
 
 def test_export_images_false_overrides_html_png_config(tmp_path, fake_build, fake_images):
     app, out = _app(tmp_path, confoverrides={"likec4_export_images": False,
                                              "likec4_render": {"html": "png"}})
     assert app.env.likec4_render_default == "iframe" and fake_images == []
-    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text(encoding="utf-8")
 
 
 def _boom(source_dir, cache_dir, version, fmt, views, seq=False):
@@ -400,7 +410,7 @@ def test_batched_export_failure_is_a_warning_for_iframe_builders(tmp_path, fake_
     with docutils_namespace():
         app, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
     assert app.env.likec4_images == {} and app.env.likec4_images_seq == {}
-    assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
+    assert '<iframe class="likec4-view"' in (out / "index.html").read_text(encoding="utf-8")
 
 
 def test_batched_export_failure_fails_a_strict_build(tmp_path, fake_build, fake_images, monkeypatch):
@@ -419,11 +429,11 @@ def test_images_coming_back_rereads_cached_fallbacks(tmp_path, fake_build, fake_
     (src / "index.rst").write_text("P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. note:: touched\n")
     with docutils_namespace():                                 # build 2: export broken → iframe fallback
         _, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
-    assert "<iframe" in (out / "index.html").read_text()
+    assert "<iframe" in (out / "index.html").read_text(encoding="utf-8")
     monkeypatch.setattr(_runner, "ensure_images", real)
     with docutils_namespace():                                 # build 3: images back, nothing edited
         app, out = _app(tmp_path, srcdir=src)
-    assert 'src="_images/index.png"' in (out / "index.html").read_text()   # re-read, not the cached iframe
+    assert 'src="_images/index.png"' in (out / "index.html").read_text(encoding="utf-8")   # re-read, not the cached iframe
     assert app.env.likec4_needed == {"index": {("index", "png", False)}}
 
 
@@ -503,7 +513,7 @@ def test_missing_exported_file_is_an_error(tmp_path, fake_build, monkeypatch):
 
 def test_height_passes_through_in_image_mode(tmp_path, fake_build):
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n   :height: 200px\n")
-    assert "height: 200px" in (_build(tmp_path, srcdir=src) / "index.html").read_text()
+    assert "height: 200px" in (_build(tmp_path, srcdir=src) / "index.html").read_text(encoding="utf-8")
 
 
 def test_epub_falls_back_to_image_and_plain_model(tmp_path, fake_build):
@@ -511,7 +521,7 @@ def test_epub_falls_back_to_image_and_plain_model(tmp_path, fake_build):
     # :render: iframe must resolve to the image, and the model embed to plain text
     src = _src(tmp_path, "s", "E\n=\n\n.. likec4-view:: index\n   :render: iframe\n\n.. likec4-model::\n")
     _, out = _app(tmp_path, srcdir=src, builder="epub", strict=False)
-    xhtml = (out / "index.xhtml").read_text()
+    xhtml = (out / "index.xhtml").read_text(encoding="utf-8")
     assert "<iframe" not in xhtml
     assert "index.png" in xhtml
     assert "LikeC4 model (interactive" in xhtml
@@ -522,7 +532,7 @@ def test_likec4_render_iframe_for_latex_falls_back_to_png(tmp_path, fake_build):
     # iframes only exist on HTML: a config override asking for one on LaTeX yields the image
     app, out = _app(tmp_path, builder="latex", confoverrides={"likec4_render": {"latex": "iframe"}})
     assert app.env.likec4_render_default == "png"
-    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
+    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text(encoding="utf-8")
 
 
 def test_docutils_image_heights_are_accepted(tmp_path, fake_build):
@@ -530,7 +540,7 @@ def test_docutils_image_heights_are_accepted(tmp_path, fake_build):
         "H\n=\n\n.. likec4-view:: index\n   :render: png\n   :height: 100\n\n"
         ".. likec4-view:: index\n   :render: png\n   :height: 12pt\n\n"
         ".. likec4-view:: seqA\n   :height: 300\n"))
-    html = (_build(tmp_path, srcdir=src) / "index.html").read_text()
+    html = (_build(tmp_path, srcdir=src) / "index.html").read_text(encoding="utf-8")
     # unitless image height → pixels: docutils <0.22 emits style="height: 100px", 0.22+ height="100"
     assert "height: 100px" in html or 'height="100"' in html
     assert "height: 12pt" in html
@@ -553,7 +563,7 @@ def test_mode_sequence_in_image_mode_uses_the_seq_export(tmp_path, fake_build, f
     copied = {p.name: p.read_bytes() for p in (out / "_images").iterdir()}
     assert sorted(copied) == ["index.png", "seqA.png", "seqA1.png"]   # Sphinx dedups the basename
     assert sorted(copied.values(), key=len) == [_PNG, _PNG, _PNG_SEQ]  # exactly one from the seq pass
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert html.count("_images/seqA") == 2 and "_images/index.png" in html
 
 
@@ -582,11 +592,11 @@ def test_batched_pass_drops_seq_entries_for_views_no_longer_dynamic(tmp_path, fa
 def test_builder_switch_skips_the_batched_pass(tmp_path, fake_build, fake_images):
     dt = tmp_path / "dt"
     with docutils_namespace():                                 # latex: every view exported on demand
-        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "latex"), str(dt), "latex", warningiserror=True).build()
+        Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(tmp_path / "latex"), str(dt), "latex", warningiserror=True).build()
     assert fake_images == [("png", ("index",), False), ("png", ("seqA",), False)]
     fake_images.clear()
     with docutils_namespace():                                 # html on the same doctree dir
-        Sphinx(str(ROOT), str(ROOT), str(tmp_path / "html"), str(dt), "html", warningiserror=True).build()
+        Sphinx(str(_root_copy(tmp_path)), str(_root_copy(tmp_path)), str(tmp_path / "html"), str(dt), "html", warningiserror=True).build()
     assert fake_images == []                                    # re-read to iframes; nothing exported
 
 

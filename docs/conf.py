@@ -28,7 +28,7 @@ _EXAMPLE_FILES = ["_spec.c4", "model.c4", "views.c4", "externals.c4", "deploymen
 def _fetch_example(dest: Path) -> None:
     """Download the example once per pinned SHA into ``dest`` (git-ignored, under _build)."""
     stamp = dest / ".sha"
-    if stamp.exists() and stamp.read_text() == _EXAMPLE_SHA:
+    if stamp.exists() and stamp.read_text(encoding="utf-8") == _EXAMPLE_SHA:
         return
     shutil.rmtree(dest, ignore_errors=True)
     for rel in _EXAMPLE_FILES:
@@ -36,7 +36,7 @@ def _fetch_example(dest: Path) -> None:
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         urllib.request.urlretrieve(url, target)
-    stamp.write_text(_EXAMPLE_SHA)
+    stamp.write_text(_EXAMPLE_SHA, encoding="utf-8")
 
 
 _fetch_example(Path(__file__).parent / "_build" / "cloud-system")

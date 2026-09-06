@@ -233,7 +233,13 @@ class LikeC4View(Directive):
             raise ExtensionError(
                 f"likec4-view: no exported {fmt} for view {view!r} in {file.parent} "
                 f"(likec4 export names files by view id; check the export dir)")
-        uri = os.path.relpath(file, os.path.dirname(env.doc2path(env.docname)))
+        # image URIs are POSIX paths for docutils/Sphinx even on Windows
+        try:
+            uri = os.path.relpath(file, os.path.dirname(env.doc2path(env.docname))).replace(os.sep, "/")
+        except ValueError as e:                 # Windows: sources and doctree dir on different drives
+            raise ExtensionError(
+                f"likec4-view: cannot reference {file} relative to the document ({e}); keep the "
+                f"doctree dir on the same drive as the sources, e.g. -d docs/_build/doctrees") from e
         opts = {k: v for k, v in self.options.items() if k in ("width", "height", "alt", "align", "scale")}
         opts.setdefault("alt", title)
         return nodes.image(uri=uri, **opts)
