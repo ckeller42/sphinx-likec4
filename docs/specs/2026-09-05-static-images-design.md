@@ -202,6 +202,10 @@ directive creates during `run()` is found in time; that holds in parallel read w
 - **Consequences:** plain HTML never starts Chromium unless a page uses `:render: png`;
   unreferenced views are never rendered; a first build pays one CLI run per newly referenced
   view, rebuilds pay one batched run per `(fmt, seq)` only when sources changed.
+- **Re-render key.** The `env-get-outdated` key is `(format, default render, images available)`.
+  A build that fell back to iframes/placeholders (batched export failed, npx missing) leaves
+  those in cached doctrees; when images are available again every document is re-read, and the
+  re-read pages record their needs afresh. On-demand export failures are always fatal.
 - **Not built (ponytail):** an eager-export switch (the remembered set makes the second build
   batched anyway), per-view stamps (dir-level digest suffices), lock files (not needed per the
   concurrency check).

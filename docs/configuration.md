@@ -18,11 +18,15 @@ The `likec4_missing="warn"` warning is tagged `type="likec4"`, so it can be sile
 
 ## Static images and PDF
 
-Every builder that can embed images — LaTeX, epub, **and HTML** — exports all views as PNG once
-(HTML too, so a `:render: png` page can find its file), cached on the same content hash as the
-viewer. If the export fails on a builder whose default is the iframe, the build continues with a
-`likec4` warning and `:render: png` falls back to the iframe; set `likec4_export_images = False`
-to skip the export entirely. The export renders in headless Chromium through Playwright. If no
+Only the views a build actually embeds are exported: a page's directive renders its view on
+first use (`likec4 export png --flat -f <id>`), and rebuilds re-export the remembered set in
+one run per format when the sources changed. Plain HTML never starts a browser unless a page
+uses `:render: png`; unreferenced views are never rendered. The renders live under the doctree
+dir (`likec4/images-<fmt>/`), cached on the same content hash as the viewer. If the batched
+re-export fails on a builder whose default is the iframe, the build continues with a `likec4`
+warning and `:render: png` falls back to the iframe; an export failure for an explicitly
+requested image is an error. Set `likec4_export_images = False` to disable images entirely.
+The export renders in headless Chromium through Playwright. If no
 browser is present the extension installs one **once**, using likec4's own Playwright so the
 revision matches:
 
