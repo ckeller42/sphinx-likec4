@@ -1,7 +1,8 @@
 # Example — cloud-system
 
 LikeC4's official [`cloud-system` example](https://github.com/likec4/likec4/tree/main/examples/cloud-system)
-(MIT), vendored under `docs/model/`.
+(MIT), fetched at docs-build time from a pinned upstream commit (see `docs/conf.py`) — nothing
+is copied into this repository.
 
 ## Structural view
 
