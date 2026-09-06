@@ -4,6 +4,7 @@
 - **PR-only.** `main` is protected (admins too, conversation resolution required). Branch → commit → `gh pr create`. Direct push fails.
 - Commit prefixes per history: `feat:` `fix:` `docs:` `test:` `ci:` `chore:`.
 - CodeRabbit reviews every PR. Unresolved threads block merge: fix, then resolve via GraphQL `resolveReviewThread` (or PR UI).
+- Claude reviews every same-repo PR too (`.github/workflows/claude-code-review.yml`, inline comments) and answers `@claude` in issues/PR comments (`claude.yml`); both run on the maintainer's subscription via the `CLAUDE_CODE_OAUTH_TOKEN` secret. Gemini Code Assist config lives in `.gemini/` (active only if the app is installed).
 
 ## Test / lint
 - `./test.sh` = ruff + pytest + strict sphinx build (mirrors CI). Bare `pytest` also works (`testpaths` set).
