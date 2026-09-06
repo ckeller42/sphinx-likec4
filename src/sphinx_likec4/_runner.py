@@ -106,12 +106,12 @@ def ensure_build(source_dir: Path, cache_dir: Path, version: str, build_args: li
     dist = cache_dir / "dist"
     stamp = cache_dir / "stamp"
     digest = source_hash(source_dir, version, build_args)
-    if stamp.exists() and stamp.read_text() == digest and dist.exists():
+    if stamp.exists() and stamp.read_text(encoding="utf-8") == digest and dist.exists():
         return dist
     shutil.rmtree(dist, ignore_errors=True)    # stale hashed assets must not accumulate
     _run(npx, [f"likec4@{version}", "build", "--use-hash-history", "--base", "./",
                "-o", str(dist), *build_args, str(source_dir)], cwd=source_dir)
-    stamp.write_text(digest)
+    stamp.write_text(digest, encoding="utf-8")
     return dist
 
 
@@ -124,16 +124,16 @@ def ensure_views(source_dir: Path, cache_dir: Path, version: str) -> tuple[set[s
     cache_dir.mkdir(parents=True, exist_ok=True)
     stamp, views_file = cache_dir / "views.stamp", cache_dir / "views-only.json"
     digest = source_hash(source_dir, version, ["json", "2"])   # "2": file schema with dynamic ids
-    if stamp.exists() and stamp.read_text() == digest and views_file.exists():
-        cached = json.loads(views_file.read_text())
+    if stamp.exists() and stamp.read_text(encoding="utf-8") == digest and views_file.exists():
+        cached = json.loads(views_file.read_text(encoding="utf-8"))
         return set(cached["views"]), set(cached["dynamic"])
     export = cache_dir / "model.json"
     _run(npx, [f"likec4@{version}", "export", "json", "-o", str(export), str(source_dir)],
          cwd=source_dir)
-    data = json.loads(export.read_text())
+    data = json.loads(export.read_text(encoding="utf-8"))
     views, dynamic = _view_ids(data), _dynamic_view_ids(data)
-    views_file.write_text(json.dumps({"views": sorted(views), "dynamic": sorted(dynamic)}))
-    stamp.write_text(digest)
+    views_file.write_text(json.dumps({"views": sorted(views), "dynamic": sorted(dynamic)}), encoding="utf-8")
+    stamp.write_text(digest, encoding="utf-8")
     return views, dynamic
 
 
@@ -156,9 +156,9 @@ def ensure_images(source_dir: Path, cache_dir: Path, version: str, fmt: str,
     name = f"images-{fmt}-seq" if seq else f"images-{fmt}"
     out, stamp = cache_dir / name, cache_dir / f"{name}.stamp"
     digest = source_hash(source_dir, version, [fmt, "seq"] if seq else [fmt])
-    if not (stamp.exists() and stamp.read_text() == digest):
+    if not (stamp.exists() and stamp.read_text(encoding="utf-8") == digest):
         shutil.rmtree(out, ignore_errors=True)               # stale renders must not survive
-        stamp.write_text(digest)
+        stamp.write_text(digest, encoding="utf-8")
     out.mkdir(parents=True, exist_ok=True)                   # also recreates a hand-deleted dir on a stamp hit
     missing = sorted(v for v in set(views) if not (out / f"{v}.{fmt}").exists())
     if not missing:

@@ -28,7 +28,7 @@ def test_real_likec4_build_end_to_end(tmp_path):
                  warningiserror=True)
     app.build()
     assert (out / "_likec4" / "index.html").exists()
-    html = (out / "index.html").read_text()
+    html = (out / "index.html").read_text(encoding="utf-8")
     assert 'src="_likec4/#/view/index/"' in html
     assert 'src="_images/index.png"' in html                # real export, --flat naming
     assert (out / "_images" / "index.png").stat().st_size > 1000
@@ -40,7 +40,7 @@ def test_real_likec4_latex_embeds_png(tmp_path):
     app = Sphinx(str(src), str(src), str(out), str(tmp_path / "dt"), "latex",
                  warningiserror=True)
     app.build()
-    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text()
+    assert "\\sphinxincludegraphics" in next(out.glob("*.tex")).read_text(encoding="utf-8")
     assert (out / "index.png").stat().st_size > 1000
 
 
