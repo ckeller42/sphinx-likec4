@@ -25,9 +25,11 @@ def fake_images(monkeypatch):
 
     def fake(source_dir, cache_dir, version, fmt, views, seq=False):
         views = tuple(sorted(views))
-        calls.append((fmt, views, seq))
         out = cache_dir / (f"images-{fmt}-seq" if seq else f"images-{fmt}")
         out.mkdir(parents=True, exist_ok=True)
+        if not views:                     # builder-inited's validate/restamp pass: no export, not recorded
+            return out
+        calls.append((fmt, views, seq))
         for view in views:
             (out / f"{view}.{fmt}").write_bytes(_PNG_SEQ if seq else _PNG)
         return out
@@ -373,7 +375,10 @@ def test_export_images_false_overrides_html_png_config(tmp_path, fake_build, fak
     assert '<iframe class="likec4-view"' in (out / "index.html").read_text()
 
 
-def _boom(*a, **k):
+def _boom(source_dir, cache_dir, version, fmt, views, seq=False):
+    """ensure_images stand-in whose exports fail; the view-less validate/restamp pass is fine."""
+    if not views:
+        return cache_dir / (f"images-{fmt}-seq" if seq else f"images-{fmt}")
     raise RuntimeError("chromium: error while loading shared libraries")
 
 
@@ -410,10 +415,7 @@ def test_images_coming_back_rereads_cached_fallbacks(tmp_path, fake_build, fake_
     with docutils_namespace():                                 # build 1: png embedded, remembered
         _app(tmp_path, srcdir=src)
     real = _runner.ensure_images
-
-    def boom(*a, **k):
-        raise RuntimeError("chromium: error while loading shared libraries")
-    monkeypatch.setattr(_runner, "ensure_images", boom)
+    monkeypatch.setattr(_runner, "ensure_images", _boom)
     (src / "index.rst").write_text("P\n=\n\n.. likec4-view:: index\n   :render: png\n\n.. note:: touched\n")
     with docutils_namespace():                                 # build 2: export broken → iframe fallback
         _, out = _app(tmp_path, srcdir=src, confoverrides={"suppress_warnings": ["likec4"]})
@@ -430,10 +432,10 @@ def test_on_demand_export_failure_is_fatal(tmp_path, fake_build, monkeypatch):
         raise RuntimeError("chromium: error while loading shared libraries")
     monkeypatch.setattr(_runner, "ensure_images", boom)
     src = _src(tmp_path, "s", "P\n=\n\n.. likec4-view:: index\n   :render: png\n")
-    with pytest.raises(SphinxError, match="shared libraries"):     # explicit ask → fatal, on HTML too
-        _app(tmp_path, srcdir=src)
-    with pytest.raises(SphinxError, match="shared libraries"):     # image-default builder too
-        _app(tmp_path / "l", builder="latex")
+    with pytest.raises(SphinxError, match="shared libraries"), docutils_namespace():
+        _app(tmp_path, srcdir=src)                                 # explicit ask → fatal, on HTML too
+    with pytest.raises(SphinxError, match="shared libraries"), docutils_namespace():
+        _app(tmp_path / "l", builder="latex")                      # image-default builder too
 
 
 def test_html_render_png_exports_only_that_view(tmp_path, fake_build, fake_images):
@@ -475,7 +477,7 @@ def test_seq_export_failure_on_demand_is_fatal(tmp_path, fake_build, monkeypatch
     _with_dynamic_seqa(monkeypatch)
 
     def flaky(source_dir, cache_dir, version, fmt, views, seq=False):
-        if seq:
+        if seq and views:
             raise RuntimeError("chromium crashed during the --seq pass")
         out = cache_dir / f"images-{fmt}"
         out.mkdir(parents=True, exist_ok=True)
@@ -609,3 +611,19 @@ def test_env_handlers_purge_and_merge():
     assert env.likec4_needed == {"a": {("z", "jpg", True)}, "b": {("y", "png", False)}, "c": {("w", "png", False)}}
     _env_merge_info(None, env, ["b"], SimpleNamespace())        # a worker env without the attribute
     assert "b" in env.likec4_needed
+
+
+def test_builder_inited_validates_every_image_dir_before_reading(tmp_path, fake_build, monkeypatch):
+    # the restamp pass runs in the main process so parallel read workers never race on a stale
+    # stamp; it asks for no views, so it never exports anything
+    calls = []
+
+    def record(source_dir, cache_dir, version, fmt, views, seq=False):
+        calls.append((fmt, tuple(views), seq))
+        out = cache_dir / (f"images-{fmt}-seq" if seq else f"images-{fmt}")
+        out.mkdir(parents=True, exist_ok=True)
+        return out
+    monkeypatch.setattr(_runner, "ensure_images", record)
+    _with_dynamic_seqa(monkeypatch)
+    _app(tmp_path, confoverrides={"likec4_render": {"latex": "jpg"}})     # plain HTML page set
+    assert calls == [("jpg", (), False), ("jpg", (), True), ("png", (), False), ("png", (), True)]

@@ -130,6 +130,13 @@ def _builder_inited(app):
             env.likec4_images = {f: str(cache_dir / f"images-{f}") for f in sorted(formats)}
             env.likec4_images_seq = ({f: str(cache_dir / f"images-{f}-seq") for f in sorted(formats)}
                                      if dynamic else {})
+            # Validate (and wipe/restamp when the sources changed) every image dir here, in
+            # the main process before any read worker forks: two workers seeing a stale stamp
+            # at once could wipe files one of them had just exported. No views → no CLI run.
+            for f in sorted(formats):
+                _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, [])
+                if dynamic:
+                    _runner.ensure_images(source_dir, cache_dir, cfg.likec4_version, f, [], seq=True)
             # Lazy export: the directives export what they embed (LikeC4View._image) and
             # remember it in env.likec4_needed; here, re-export the previous build's set in
             # one run per (format, layout) so doctrees that won't be re-read still find
