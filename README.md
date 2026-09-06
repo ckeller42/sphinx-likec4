@@ -39,8 +39,23 @@ likec4_source_dir = "model"
 .. likec4-view:: cloud-to-amazon
 ```
 
-Non-HTML builders (LaTeX/PDF, epub) get the views as static PNGs automatically; `:render: png`
-does the same on an HTML page. See the [docs](https://ckeller42.github.io/sphinx-likec4/) —
-also as a [PDF](https://ckeller42.github.io/sphinx-likec4/sphinx-likec4.pdf).
+## Static images and PDF
+
+Views can also be embedded as static **PNG/JPG** images — per directive, per output format, or
+by default:
+
+```rst
+.. likec4-view:: cloud-to-amazon
+   :render: png          # static image on an HTML page (iframe is the default there)
+   :mode: sequence       # dynamic views: sequence layout, in the iframe and in the image
+   :width: 80%
+```
+
+LaTeX/PDF and epub builds do this automatically for every view — `sphinx-build -M latexpdf`
+just works, Chromium (via Playwright) is installed once on first use. Configure the default per
+output format with `likec4_render = {"latex": "jpg"}`.
+
+**Example:** the [PDF rendering of these docs](https://ckeller42.github.io/sphinx-likec4/sphinx-likec4.pdf)
+— every diagram in it, including the sequence view, is a static image produced this way.
 
 Docs: https://ckeller42.github.io/sphinx-likec4/ · License: MIT
