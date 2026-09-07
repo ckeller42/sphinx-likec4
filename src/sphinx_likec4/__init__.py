@@ -1,6 +1,7 @@
 """sphinx-likec4 — embed interactive LikeC4 views in Sphinx HTML documentation."""
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -8,7 +9,9 @@ from sphinx.errors import ConfigError
 from sphinx.util import logging
 
 __version__ = "0.2.0"
-DEFAULT_LIKEC4_VERSION = "1.59.2"
+# the pin lives in package.json next to this file so Dependabot can bump it (see the file)
+DEFAULT_LIKEC4_VERSION = json.loads(
+    (Path(__file__).parent / "package.json").read_text(encoding="utf-8"))["devDependencies"]["likec4"]
 logger = logging.getLogger(__name__)
 
 
