@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "PR-only guard",
+            "command": "jq -r '.tool_input.command' | grep -qE '(^|[;&|]\\s*)git commit( |$)' && [ \"$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\" = main ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On main: this repo is PR-only. Branch first (git checkout -b <topic>), then commit.\"}}' || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "ruff",
+            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in *.py) .venv/bin/python -m ruff check -q \"$f\" 1>&2 || exit 2 ;; esac; true"
+          }
+        ]
+      }
+    ]
+  }
+}
