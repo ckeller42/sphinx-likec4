@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write           # to dispatch CI on main after the merge
 
 # Serialize merges so several CI runs completing together don't race each other
 # into a now-conflicting PR. `queue: max` keeps every pending run — the default
@@ -72,4 +73,17 @@ jobs:
           # the PR meanwhile, GitHub refuses (409) and the new head's own CI run
           # re-triggers this workflow.
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+        run: |
+          gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          # no merge queue / required checks here, so the merge is synchronous — but verify
+          # before dispatching, or CI would test the pre-merge main
+          merged=$(gh pr view "$NUMBER" --repo "$REPO" --json state,mergeCommit \
+                   --jq 'select(.state == "MERGED") | .mergeCommit.oid')
+          if [ -z "$merged" ]; then echo "::error::#$NUMBER did not merge"; exit 1; fi
+          # A merge made with GITHUB_TOKEN raises no push event, so main's CI (and the Pages
+          # deploy) would not run; workflow_dispatch is the documented exception to that rule.
+          for attempt in 1 2 3; do
+            gh workflow run CI --repo "$REPO" --ref main && exit 0
+            sleep 15
+          done
+          echo "::error::could not dispatch CI on main after merging #$NUMBER ($merged)"; exit 1
