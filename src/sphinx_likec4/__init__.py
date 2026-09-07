@@ -10,13 +10,13 @@ from sphinx.util import logging
 
 __version__ = "0.2.0"
 # the pin lives in package.json next to this file so Dependabot can bump it (see the file)
+_PIN_FILE = Path(__file__).parent / "package.json"
 try:
-    DEFAULT_LIKEC4_VERSION = json.loads(
-        (Path(__file__).parent / "package.json").read_text(encoding="utf-8"))["devDependencies"]["likec4"]
+    DEFAULT_LIKEC4_VERSION = json.loads(_PIN_FILE.read_text(encoding="utf-8"))["devDependencies"]["likec4"]
 except (OSError, ValueError, KeyError, TypeError) as e:     # missing, malformed, or restructured file
     raise ImportError(
-        "sphinx-likec4: src/sphinx_likec4/package.json (the pinned likec4 version) is missing or "
-        f"malformed — reinstall the package: {e}") from e
+        f"sphinx-likec4: {_PIN_FILE} (the pinned likec4 version) is missing or malformed — "
+        f"reinstall the package: {e}") from e
 logger = logging.getLogger(__name__)
 
 
