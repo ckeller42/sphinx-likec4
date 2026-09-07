@@ -33,5 +33,9 @@ jobs:
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
           plugins: "code-review@claude-code-plugins"
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-          # the MCP server that posts inline comments starts only when named here
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # a tracking comment that ends "Completed" — a visible outcome even when the review is clean
+          track_progress: true
+          # inline findings go through the MCP server (started only when named here); the
+          # "no issues found" summary is posted by the skill with `gh pr comment`, which the
+          # action only permits when listed too (skill frontmatter alone is not enough here)
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"'
