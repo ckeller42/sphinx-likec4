@@ -2,6 +2,7 @@ name: CI
 on:
   push: { branches: [main] }
   pull_request:
+  workflow_dispatch:      # dependabot-auto-merge.yml dispatches this after a GITHUB_TOKEN merge (no push event)
 permissions: { contents: read }
 jobs:
   test:

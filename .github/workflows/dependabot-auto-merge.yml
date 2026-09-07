@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write           # to dispatch CI on main after the merge
 
 # Serialize merges so several CI runs completing together don't race each other
 # into a now-conflicting PR. `queue: max` keeps every pending run — the default
@@ -72,4 +73,8 @@ jobs:
           # the PR meanwhile, GitHub refuses (409) and the new head's own CI run
           # re-triggers this workflow.
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+        run: |
+          gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+          # A merge made with GITHUB_TOKEN raises no push event, so main's CI (and the Pages
+          # deploy) would not run; workflow_dispatch is the documented exception to that rule.
+          gh workflow run CI --repo "$REPO" --ref main
