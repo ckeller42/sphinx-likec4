@@ -200,3 +200,15 @@ def test_ensure_images_and_views_raise_when_npx_missing(tmp_path, monkeypatch):
         _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["index"])
     with pytest.raises(_runner.LikeC4Missing):
         _runner.ensure_views(src, tmp_path / "c", "1.59.2")
+
+
+def test_ensure_images_batches_all_missing_views_in_one_sorted_run(tmp_path, monkeypatch):
+    src = _model(tmp_path)
+    calls = []
+    monkeypatch.setattr(_runner, "_npx", lambda: "npx")
+    monkeypatch.setattr(_runner.subprocess, "run", _fake_cli(calls))
+    out = _runner.ensure_images(src, tmp_path / "c", "1.59.2", "png", ["seqA", "index", "seqA"])
+    assert len(calls) == 1                                   # one CLI run for every missing view
+    cmd = calls[0]
+    assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-f"] == ["index", "seqA"]   # deduped, sorted
+    assert (out / "index.png").exists() and (out / "seqA.png").exists()
