@@ -3,6 +3,6 @@
   "name": "sphinx-likec4-pin",
   "private": true,
   "devDependencies": {
-    "likec4": "1.59.3"
+    "likec4": "1.59.2"
   }
 }
