@@ -7,7 +7,7 @@
           {
             "type": "command",
             "statusMessage": "PR-only guard",
-            "command": "jq -r '.tool_input.command' | grep -qE '(^|[;&|]\\s*)git commit( |$)' && [ \"$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\" = main ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On main: this repo is PR-only. Branch first (git checkout -b <topic>), then commit.\"}}' || true"
+            "command": "jq -r '.tool_input.command' | grep -qE '(^|[^A-Za-z0-9_./-])(/[^ ]*/)?git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit([^A-Za-z0-9_-]|$)' && [ \"$(git -C \"${CLAUDE_PROJECT_DIR:-.}\" rev-parse --abbrev-ref HEAD 2>/dev/null)\" = main ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"On main: this repo is PR-only. Branch first (git checkout -b <topic>) in its own command, then commit.\"}}' || true"
           }
         ]
       }
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "statusMessage": "ruff",
-            "command": "f=$(jq -r '.tool_input.file_path'); case \"$f\" in *.py) .venv/bin/python -m ruff check -q \"$f\" 1>&2 || exit 2 ;; esac; true"
+            "command": "f=$(jq -r '.tool_input.file_path'); py=\"${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python\"; case \"$f\" in *.py) [ -x \"$py\" ] || { echo \"ruff hook: no venv at $py — skipped\" 1>&2; exit 0; }; \"$py\" -m ruff check -q \"$f\" 1>&2 || exit 2 ;; esac; true"
           }
         ]
       }
