@@ -1,4 +1,5 @@
-# Weekly bumps for the two ecosystems every repo here has.
+# Weekly bumps for the two ecosystems every repo here has, plus the pinned likec4 CLI version,
+# which lives in src/sphinx_likec4/package.json precisely so this updater can see it.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,3 +8,8 @@ updates:
   - package-ecosystem: pip
     directory: /
     schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /src/sphinx_likec4
+    schedule: { interval: weekly }
+    versioning-strategy: increase     # keep the exact pin, never a ^range
+    # ponytail: works without a lockfile today; add package-lock.json if Dependabot ever demands one

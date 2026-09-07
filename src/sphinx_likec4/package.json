@@ -1,0 +1,8 @@
+{
+  "//": "Single source of truth for the pinned likec4 CLI version (DEFAULT_LIKEC4_VERSION reads it). It lives in the Python package, as package.json, so Dependabot's npm updater keeps it current and CI's real-CLI tests vet each bump. Nothing is ever installed from here.",
+  "name": "sphinx-likec4-pin",
+  "private": true,
+  "devDependencies": {
+    "likec4": "1.59.3"
+  }
+}

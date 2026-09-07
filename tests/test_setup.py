@@ -1,4 +1,9 @@
-from sphinx_likec4 import setup
+import re
+from pathlib import Path
+
+import pytest
+
+from sphinx_likec4 import DEFAULT_LIKEC4_VERSION, setup
 
 
 class _FakeApp:
@@ -19,9 +24,25 @@ def test_setup_registers_config_values():
     app = _FakeApp()
     meta = setup(app)
     assert app.config_values["likec4_source_dir"] == (None, "env")
-    assert app.config_values["likec4_version"][0] == "1.59.2"
+    assert app.config_values["likec4_version"][0] == DEFAULT_LIKEC4_VERSION
+    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", DEFAULT_LIKEC4_VERSION)    # exact pin, not a range
     assert app.config_values["likec4_missing"] == ("error", "env")
     assert app.config_values["likec4_build_args"] == ([], "env")
     assert app.config_values["likec4_render"] == ({}, "env")
     assert app.config_values["likec4_export_images"] == (True, "env")
     assert meta["parallel_read_safe"] is True
+
+
+def test_unreadable_pin_file_is_a_clear_import_error(monkeypatch):
+    import importlib
+
+    import sphinx_likec4
+
+    def gone(self, *a, **k):
+        raise FileNotFoundError(self)
+    monkeypatch.setattr(Path, "read_text", gone)
+    with pytest.raises(ImportError, match="package.json .*pinned likec4 version"):
+        importlib.reload(sphinx_likec4)
+    monkeypatch.undo()
+    importlib.reload(sphinx_likec4)                          # restore the real module for other tests
+    assert sphinx_likec4.DEFAULT_LIKEC4_VERSION == DEFAULT_LIKEC4_VERSION

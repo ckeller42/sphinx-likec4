@@ -3,7 +3,7 @@
 | `conf.py` value | default | meaning |
 |---|---|---|
 | `likec4_source_dir` | — (required) | directory of `.c4`/`.likec4` sources, relative to `conf.py` |
-| `likec4_version` | `"1.59.2"` | exact CLI version run via `npx -y likec4@<version>` |
+| `likec4_version` | pinned in `src/sphinx_likec4/package.json` (Dependabot keeps it current) | exact CLI version run via `npx -y likec4@<version>` |
 | `likec4_missing` | `"error"` | when node/npx is absent: `error` fails the build, `warn` renders placeholders |
 | `likec4_build_args` | `[]` | extra arguments appended to `likec4 build` |
 | `likec4_render` | `{}` | default render mode per output format, keyed by builder format (`"html"`, `"latex"`, …; epub uses `"epub"`), e.g. `{"latex": "jpg", "epub": "png"}`; values `iframe`, `png`, `jpg`, `text` |
@@ -34,7 +34,7 @@ The export renders in headless Chromium through Playwright. If no browser is pre
 extension installs one **once**, using likec4's own Playwright so the revision matches:
 
 ```bash
-npx -y --package likec4@1.59.2 -c 'playwright install chromium'   # what it runs for you
+npx -y --package likec4@<pinned version> -c 'playwright install chromium'   # what it runs for you
 ```
 
 (≈150 MB, into Playwright's cache under your home directory.) On a minimal Linux CI image add

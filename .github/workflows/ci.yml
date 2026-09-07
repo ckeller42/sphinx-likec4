@@ -31,6 +31,12 @@ jobs:
       - name: Lint
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13' && matrix.sphinx == ''
         run: python -m ruff check .
+      - name: Wheel carries the likec4 pin
+        # editable installs read package.json from the source tree; the built wheel must too
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13' && matrix.sphinx == ''
+        run: |
+          pip wheel . -w dist --no-deps -q
+          python -c "import glob, zipfile; names = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert any(n.endswith('sphinx_likec4/package.json') for n in names), names"
   docs-build:
     runs-on: ubuntu-latest
     steps:

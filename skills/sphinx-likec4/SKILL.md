@@ -56,7 +56,7 @@ MyST markdown form:
 | conf.py | default | meaning |
 |---|---|---|
 | `likec4_source_dir` | — required | model sources dir |
-| `likec4_version` | pinned (e.g. `1.59.2`) | exact CLI version; never unpin |
+| `likec4_version` | pinned in the package's `package.json` | exact CLI version; never unpin |
 | `likec4_missing` | `error` | node/npx absent: `error` fails build, `warn` renders placeholders |
 | `likec4_build_args` | `[]` | extra `likec4 build` args |
 | `likec4_render` | `{}` | default render mode per output format, keyed by builder format (`"html"`, `"latex"`, `"epub"`…), values `iframe`\|`png`\|`jpg`\|`text` |
