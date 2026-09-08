@@ -2,7 +2,7 @@
 
 ## Workflow
 - **PR-only.** `main` is protected (admins too, conversation resolution required). Branch → commit → `gh pr create`. Direct push fails.
-- `.claude/settings.json` hooks: `git commit` on `main` is denied (branch first — in a separate command, the hook checks the branch before the command runs); every `.py` Edit/Write runs `ruff check` via `.venv/bin/python` and feeds violations back. Personal overrides go in the git-ignored `.claude/settings.local.json`.
+- `.claude/settings.json` hooks: `git commit` on `main` is denied (branch first — in a separate command, the hook checks the branch before the command runs); every `.py` Edit/Write runs `ruff check` via `.venv/bin/python` and feeds violations back. Both hooks are Bash-only (macOS/Linux/Git Bash); a PowerShell session gets no local guard, branch protection still applies. Personal overrides go in the git-ignored `.claude/settings.local.json`.
 - Actions pinning policy (decided 2026-09-07): major tags (`actions/checkout@v7`), kept current by Dependabot — not commit SHAs. Decline reviewer requests to SHA-pin single files; a change of policy would be repo-wide.
 - Commit prefixes per history: `feat:` `fix:` `docs:` `test:` `ci:` `chore:`.
 - CodeRabbit reviews every PR. Unresolved threads block merge: fix, then resolve via GraphQL `resolveReviewThread` (or PR UI).
