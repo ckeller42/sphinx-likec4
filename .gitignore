@@ -4,3 +4,4 @@ dist/
 docs/_build/
 *.egg-info/
 .superpowers/
+.claude/settings.local.json
