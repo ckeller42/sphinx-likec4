@@ -2,8 +2,11 @@ import re
 from pathlib import Path
 
 import pytest
+import tomllib
 
-from sphinx_likec4 import DEFAULT_LIKEC4_VERSION, setup
+from sphinx_likec4 import DEFAULT_LIKEC4_VERSION, __version__, setup
+
+_REPO_ROOT = Path(__file__).parent.parent
 
 
 class _FakeApp:
@@ -46,3 +49,8 @@ def test_unreadable_pin_file_is_a_clear_import_error(monkeypatch):
     monkeypatch.undo()
     importlib.reload(sphinx_likec4)                          # restore the real module for other tests
     assert sphinx_likec4.DEFAULT_LIKEC4_VERSION == DEFAULT_LIKEC4_VERSION
+
+
+def test_version_matches_pyproject():
+    pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert __version__ == pyproject["project"]["version"]
