@@ -1,8 +1,8 @@
 import re
+import sys
 from pathlib import Path
 
 import pytest
-import tomllib
 
 from sphinx_likec4 import DEFAULT_LIKEC4_VERSION, __version__, setup
 
@@ -51,6 +51,9 @@ def test_unreadable_pin_file_is_a_clear_import_error(monkeypatch):
     assert sphinx_likec4.DEFAULT_LIKEC4_VERSION == DEFAULT_LIKEC4_VERSION
 
 
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib requires Python 3.11+")
 def test_version_matches_pyproject():
+    import tomllib
+
     pyproject = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert __version__ == pyproject["project"]["version"]
