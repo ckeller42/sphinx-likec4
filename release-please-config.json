@@ -1,0 +1,10 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "sphinx-likec4",
+      "include-component-in-tag": false,
+      "extra-files": ["src/sphinx_likec4/__init__.py"]
+    }
+  }
+}

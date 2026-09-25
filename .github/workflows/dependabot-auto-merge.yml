@@ -82,8 +82,15 @@ jobs:
           if [ -z "$merged" ]; then echo "::error::#$NUMBER did not merge"; exit 1; fi
           # A merge made with GITHUB_TOKEN raises no push event, so main's CI (and the Pages
           # deploy) would not run; workflow_dispatch is the documented exception to that rule.
-          for attempt in 1 2 3; do
-            gh workflow run CI --repo "$REPO" --ref main && exit 0
-            sleep 15
+          # Release runs too: a `fix(deps)` pin bump is what makes release-please open a patch release.
+          # Try both before failing, so a flaky CI dispatch can't also drop the Release one.
+          failed=
+          for wf in CI Release; do
+            ok=
+            for attempt in 1 2 3; do
+              gh workflow run "$wf" --repo "$REPO" --ref main && { ok=1; break; }
+              sleep 15
+            done
+            [ -n "$ok" ] || { echo "::error::could not dispatch $wf on main after merging #$NUMBER ($merged)"; failed=1; }
           done
-          echo "::error::could not dispatch CI on main after merging #$NUMBER ($merged)"; exit 1
+          [ -z "$failed" ]

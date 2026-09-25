@@ -12,5 +12,6 @@ updates:
     directory: /src/sphinx_likec4
     schedule: { interval: weekly }
     versioning-strategy: increase     # keep the exact pin, never a ^range
+    commit-message: { prefix: "fix(deps)" }   # a new likec4 pin ships to users, so release-please cuts a patch release
     # ponytail: works without a lockfile today; add package-lock.json if Dependabot ever demands one
     # (first bump verified end to end: pin set back one patch, Dependabot re-bumped and auto-merged)
