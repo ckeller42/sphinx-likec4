@@ -20,7 +20,7 @@ jobs:
       # Publishing lives in this workflow because a tag made with GITHUB_TOKEN
       # would not trigger a separate tag-triggered workflow.
       - id: rp
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
   build:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
