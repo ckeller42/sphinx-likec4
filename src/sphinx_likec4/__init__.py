@@ -8,7 +8,7 @@ from pathlib import Path
 from sphinx.errors import ConfigError
 from sphinx.util import logging
 
-__version__ = "0.2.0"
+__version__ = "0.2.0"  # x-release-please-version
 # the pin lives in package.json next to this file so Dependabot can bump it (see the file)
 _PIN_FILE = Path(__file__).parent / "package.json"
 try:
