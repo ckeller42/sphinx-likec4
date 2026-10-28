@@ -1,0 +1,5 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check   # mirrors CI's `ruff check .`; no ruff-format hook since CI doesn't enforce formatting

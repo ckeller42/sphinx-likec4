@@ -10,6 +10,7 @@
 
 ## Test / lint
 - `./test.sh` = ruff + pytest + strict sphinx build (mirrors CI). Bare `pytest` also works (`testpaths` set).
+- Git pre-commit hook (`.pre-commit-config.yaml`, ruff-check only — mirrors CI's lint step, not the full `./test.sh`): run `pre-commit install` once per clone (ships in `.[test]`). This is a real git hook for any contributor/tool; `.claude/settings.json`'s PostToolUse hook is Claude Code–specific and doesn't fire for a plain `git commit`.
 - Doctests live in `src/` docstrings, collected via `--doctest-modules`; `tests/roots/*` is excluded (Sphinx test roots, loaded from disk, not imported).
 - `tests/test_integration.py` needs node/`npx` (skips otherwise); first run downloads pinned likec4, slow.
 
