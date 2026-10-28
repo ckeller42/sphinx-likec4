@@ -30,6 +30,9 @@ dir (`likec4/images-<fmt>/`), cached on the same content hash as the viewer. If 
 re-export fails on a builder whose default is the iframe, the build continues with a `likec4`
 warning and `:render: png`/`jpg` fall back to the iframe; an export failure for an explicitly
 requested image is an error. Set `likec4_export_images = False` to disable images entirely.
+The export opens your model in headless Chromium with the build machine's network access —
+only build docs from LikeC4 sources (and their icon URLs) you trust, the same rule as running
+any other code generator on third-party input.
 The export renders in headless Chromium through Playwright. If no browser is present the
 extension installs one **once**, using likec4's own Playwright so the revision matches:
 
