@@ -13,7 +13,7 @@ jobs:
     permissions: { contents: write, pull-requests: write }
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
+      sha: ${{ steps.rp.outputs.sha }}
     steps:
       # Keeps one Release PR open (version bump + changelog from conventional commits);
       # merging it tags vX.Y.Z and creates the GitHub Release, then the jobs below run.
@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with: { ref: "${{ needs.release-please.outputs.tag_name }}" }
+        with: { ref: "${{ needs.release-please.outputs.sha }}" }   # the exact commit release-please tagged, not a mutable ref
       - uses: actions/setup-python@v7
         with: { python-version: "3.13" }
       - run: pip install build

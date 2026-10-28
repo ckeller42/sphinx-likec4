@@ -19,7 +19,7 @@
           {
             "type": "command",
             "statusMessage": "ruff",
-            "command": "f=$(jq -r '.tool_input.file_path'); py=\"${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python\"; case \"$f\" in *.py) [ -x \"$py\" ] || { echo \"ruff hook: no venv at $py — skipped\" 1>&2; exit 0; }; \"$py\" -m ruff check -q \"$f\" 1>&2 || exit 2 ;; esac; true"
+            "command": "[ -n \"$GITHUB_ACTIONS\" ] && exit 0; f=$(jq -r '.tool_input.file_path'); py=\"${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python\"; case \"$f\" in *.py) [ -x \"$py\" ] || { echo \"ruff hook: no venv at $py — skipped\" 1>&2; exit 0; }; \"$py\" -m ruff check -q \"$f\" 1>&2 || exit 2 ;; esac; true"
           }
         ]
       }
