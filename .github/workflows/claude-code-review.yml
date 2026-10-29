@@ -1,7 +1,8 @@
 # Automatic Claude review of every pull request from a branch in this repository, posted as
 # inline comments (or one summary comment when it finds nothing). Complements CodeRabbit's
 # "chill" pass. Fork PRs get no secrets on public repos, and the action rejects bot actors
-# (Dependabot), so both are skipped up front instead of failing red.
+# (Dependabot, release-please's github-actions[bot]), so those are skipped up front instead
+# of failing red.
 # See https://code.claude.com/docs/en/github-actions#run-a-skill
 name: Claude Code Review
 on:
@@ -16,7 +17,8 @@ jobs:
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.draft == false &&
-      github.actor != 'dependabot[bot]'
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
