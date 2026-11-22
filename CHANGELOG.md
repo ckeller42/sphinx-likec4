@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/ckeller42/sphinx-likec4/compare/v0.2.2...v0.2.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** bump likec4 from 1.60.0 to 1.61.0 in /src/sphinx_likec4 ([#34](https://github.com/ckeller42/sphinx-likec4/issues/34)) ([f5cb450](https://github.com/ckeller42/sphinx-likec4/commit/f5cb45024f15efceb3ecb909b62ba7c71e71ae73))
+
 ## [0.2.2](https://github.com/ckeller42/sphinx-likec4/compare/v0.2.1...v0.2.2) (2026-10-29)
 
 
